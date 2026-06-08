@@ -11,6 +11,10 @@ wheels/
 
 # Local environment + tooling caches
 .env
+.env.*
+!.env.example
+*.swp
+*.swo
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
