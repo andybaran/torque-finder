@@ -1,0 +1,75 @@
+[project]
+name = "parts-lookup"
+version = "0.1.0"
+description = "Natural-language lookup API over manufacturer PDFs for bicycle-shop mechanics."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    # API
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
+    # Persistence
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "sqlalchemy>=2.0.49",
+    "pgvector>=0.4.2",
+    # Object storage
+    "aioboto3>=13.2.0",
+    # LLM / embeddings
+    "anthropic>=0.39.0",
+    "voyageai>=0.3.0",
+    # Observability
+    "structlog>=24.4.0",
+    "opentelemetry-api>=1.27.0",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+    "sentry-sdk[fastapi]>=2.18.0",
+    "greenlet>=3.4.0",
+]
+
+[project.optional-dependencies]
+ingestion = [
+    "docling>=2.10.0",
+    "pypdfium2>=4.30.0",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+parts-lookup = "parts_lookup.ingestion.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parts_lookup"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["eval: requires live API keys + DB; opt-in regression suite"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = ["pydantic.mypy"]
