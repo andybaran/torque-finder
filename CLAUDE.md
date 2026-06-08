@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Greenfield. No code, build system, tests, or dependencies exist yet. The repo currently contains only `pdf.pdf` (a sample source document) and `thoughts.md` (the project brief). Tech stack decisions are pending and must be made with the user via the interview process described below — do not scaffold a stack unilaterally.
+Implemented and deployed. The full `parts_lookup` package, alembic migrations, tests, and a live Railway deployment all exist. A functional test instance runs at **https://parts-api-production.up.railway.app** (`/docs`, `/healthz`, `POST /v1/query`), backed by Railway Postgres (pgvector), Cloudflare R2 (bucket `manuals`), and live Anthropic + Voyage APIs. Validated end-to-end against the `thoughts.md` ground truth (e.g. page 28 → "40 N-m (354 in-lb)", page 51 → "T25 5.5 N-m (49 in-lb)"). Stack decisions are complete (see below); any *new* infrastructure still goes through the three-alternatives interview.
 
 ## What we're building
 
@@ -32,7 +32,10 @@ These are hard constraints set by the user — treat them as standing instructio
 
 ### Decisions made
 
-- **Deployment target:** Railway (cloud PaaS). Runtime must stay CPU-light; Claude handles heavy lifting via API.
+- **Deployment target:** Railway (cloud PaaS). Runtime stays CPU-light; Claude handles heavy lifting via API.
+  - **Build:** a repo-root `Dockerfile` on `ghcr.io/astral-sh/uv:python3.14-bookworm-slim`. Nixpacks cannot provide Python 3.14, so `railway.toml` sets `builder = "DOCKERFILE"`. The runtime image installs only the default deps (`uv sync --no-dev --frozen`) — the `ingestion` extra (docling/PyTorch) is excluded, keeping it off the request path.
+  - **Startup:** `scripts/start.sh` runs `alembic upgrade head` then boots uvicorn. It lives in a script (not the `railway.toml` `startCommand`) because Railway does **not** POSIX-expand `${PORT:-8080}` in `startCommand` — it would pass the literal string to uvicorn. The container uses `uv run --no-sync` so it never re-syncs deps on boot.
+  - **Secrets:** local `.env` (gitignored) for the offline ingest job; Railway's Variables panel for the cloud service. The cloud `DATABASE_URL` uses the internal Postgres host; local ingest uses the public proxy URL (`*.proxy.rlwy.net`, `?ssl=require`).
 - **Expected scale:** ~1,000 PDFs, ~10 mechanic queries/day initially.
 - **Project tooling:** **uv** (Astral). One tool for Python-version management, virtualenvs, dependency install, lockfile, and script running. Uses `pyproject.toml` + `uv.lock`. Common commands: `uv sync` (install deps), `uv add <pkg>`, `uv run <cmd>`.
 - **API framework:** **FastAPI** + **Pydantic v2**. Async handlers so a single worker can serve concurrent Claude calls without blocking. Typed request/response models are the API contract — OpenAPI docs served at `/docs` for the future frontend.
@@ -64,12 +67,20 @@ These are hard constraints set by the user — treat them as standing instructio
 
 None at the moment. Stack decisions are complete. Future infrastructure choices (e.g., reranker model, background-job runner, admin UI) must still go through the three-alternatives interview process.
 
-## Proposed project layout
+## Project layout
+
+(Repo dir is `torque-finder/`; the Python package is `parts_lookup`.)
 
 ```
-parts-lookup/
+torque-finder/
 ├── pyproject.toml              # uv + project metadata
 ├── uv.lock
+├── Dockerfile                  # Railway runtime image (uv + Python 3.14)
+├── .dockerignore
+├── railway.toml                # root copy so `railway up` auto-detects it
+├── scripts/start.sh            # container entrypoint: alembic + uvicorn
+├── scripts/ingest-pass1.sh     # bulk ingest, non-catalog manuals
+├── scripts/ingest-pass2.sh     # bulk ingest, large spare-parts catalogs
 ├── .env.example                # ANTHROPIC_API_KEY, VOYAGE_API_KEY, R2_*, DATABASE_URL, OTEL_*, SENTRY_DSN
 ├── CLAUDE.md
 ├── README.md
@@ -118,6 +129,16 @@ Every top-level folder under `src/parts_lookup/` is a bounded context. `domain/`
 ### Ingestion (one-time per PDF, runs offline or as a CLI job)
 
 `CLI accepts PDF path → upload original to R2 → docling parses structure → pypdfium2 renders each page to PNG → upload PNGs to R2 → for each page: Voyage embeds the text → insert page row (pdf_id, page_no, text, tsvector, embedding, png_url) into Postgres.`
+
+Run it locally (it needs the `ingestion` extra) — it writes to the **same Railway Postgres + R2** the deployed API reads, via the local `.env`:
+
+```bash
+uv sync --extra ingestion
+uv run parts-lookup ingest <one.pdf>        # single PDF
+uv run parts-lookup ingest-dir <dir>        # every *.pdf in DIR (non-recursive)
+```
+
+`ingest-dir` commits per-PDF and continues past per-PDF failures; SHA-256 dedup makes re-runs resume safely. For the bundled ~260-PDF corpus, `scripts/ingest-pass1.sh` (non-catalog manuals) and `scripts/ingest-pass2.sh` (the large spare-parts catalogs, one at a time) wrap this. **Voyage's free tier is capped at 10K tokens/min — add a payment method before bulk ingest** (the 200M free-token allowance still applies, so it stays ~free at this scale). Embedding is batched by token budget to respect Voyage's per-request limit.
 
 ### Query (per request, on Railway)
 
