@@ -168,27 +168,42 @@ class ClaudeExtractor:
             ) from exc
 
         try:
-            source_page_no = int(payload["source_page_no"])
             answer_text = str(payload["answer"])
-            tool_size = payload.get("tool_size")
-            torque = payload.get("torque")
             confidence = float(payload["confidence"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ExtractionError(
                 "Claude response JSON did not match the expected schema"
             ) from exc
 
+        tool_size = payload.get("tool_size")
+        torque = payload.get("torque")
+        raw_page = payload.get("source_page_no")
+
         # Resolve which candidate the model pointed at — guarantees we never
         # surface a page_no that wasn't actually in the request.
-        match = next(
-            (c for c in candidates if c.page_no == source_page_no),
-            None,
-        )
-        if match is None:
-            raise ExtractionError(
-                f"Claude cited page_no={source_page_no}, which was not among "
-                f"the supplied candidates"
+        if raw_page is None:
+            # "Not found" path: the prompt tells Claude to return a null
+            # source_page_no (with low confidence + null specs) when the
+            # answer isn't on the supplied pages. Fall back to the top
+            # candidate so the response still carries a screenshot + deep
+            # link; the low confidence tells the caller it's a best guess.
+            match = candidates[0]
+        else:
+            try:
+                source_page_no = int(raw_page)
+            except (TypeError, ValueError) as exc:
+                raise ExtractionError(
+                    "Claude response JSON did not match the expected schema"
+                ) from exc
+            match = next(
+                (c for c in candidates if c.page_no == source_page_no),
+                None,
             )
+            if match is None:
+                raise ExtractionError(
+                    f"Claude cited page_no={source_page_no}, which was not among "
+                    f"the supplied candidates"
+                )
 
         try:
             return Answer(
