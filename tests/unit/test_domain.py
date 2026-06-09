@@ -44,8 +44,7 @@ class TestAnswer:
             "text": "Use a 5mm hex key.",
             "tool_size": "5mm hex",
             "torque": "11 N-m",
-            "source_pdf_id": 1,
-            "source_page_no": 31,
+            "source_index": 1,
             "confidence": 0.9,
         }
         base.update(overrides)

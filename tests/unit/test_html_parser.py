@@ -171,9 +171,14 @@ class TestCapturedFixture:
         assert any(c.anchor for c in parsed.chunks)
 
     def test_torque_text_survives_if_present_in_fixture(self, parsed) -> None:  # type: ignore[no-untyped-def]
-        raw = (_FIXTURES / "sram_manual_data_red_axs_trimmed.json").read_text(
-            encoding="utf-8"
-        )
-        if "N·m" not in raw:
-            pytest.skip("trimmed fixture carries no torque caption")
+        # The committed fixture is known to carry torque captions.
         assert any("N·m" in c.text for c in parsed.chunks)
+
+    def test_cassette_installation_xdr_chunk(self, parsed) -> None:  # type: ignore[no-untyped-def]
+        chunk = next(
+            (c for c in parsed.chunks if c.anchor == "cassette-installation-xdr"),
+            None,
+        )
+        assert chunk is not None
+        assert "40 N·m (354 In-lb)" in chunk.text
+        assert chunk.parent_anchor == "cassette-installation"

@@ -138,17 +138,15 @@ class RetrievedPage(_Frozen):
 class Answer(_Frozen):
     """Structured extraction result from Claude.
 
-    The optional fields are typed loosely on purpose: tool sizes vary
-    ("5mm hex", "T25 Torx", "7-8mm"), and torque values come in multiple units
-    ("11 N-m (97 in-lb)"). We surface the raw strings the model produced and
-    let the API layer present them.
+    ``source_index`` is the 1-based index of the candidate (in the order they
+    were supplied to the extractor) the model cited — the caller maps it back
+    to the retrieval hit. Tool/torque strings preserve the manual's notation.
     """
 
     text: str
     tool_size: str | None = None
     torque: str | None = None
-    source_pdf_id: int
-    source_page_no: int
+    source_index: int = Field(ge=1)
     confidence: float = Field(ge=0.0, le=1.0)
 
 
