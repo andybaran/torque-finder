@@ -28,6 +28,70 @@ class RetrievalSource(StrEnum):
     HYBRID = "hybrid"
 
 
+class SourceType(StrEnum):
+    """Where indexed content came from: a manufacturer PDF or a digital (HTML) manual."""
+
+    PDF = "pdf"
+    HTML = "html"
+
+
+class IndexedDocument(_Frozen):
+    """A source document in the unified store (one PDF or one HTML publication).
+
+    ``source_ref`` is the stable dedupe key: the PDF's sha256 or the
+    publication's pub_id. For PDFs, ``source_url`` holds the R2 object key of
+    the original file (the API resolves it to a public/presigned URL); for
+    HTML it is the docs.sram.com publication URL.
+    """
+
+    id: int
+    source_type: SourceType
+    title: str
+    source_url: str
+    source_ref: str
+    created_at: datetime
+
+
+class HtmlChunk(_Frozen):
+    """One block-level chunk parsed from a publication's manual-data JSON.
+
+    ``anchor`` is the block's own #hash (not every block has one);
+    ``parent_anchor`` is the owning module's #hash. ``source_url`` already
+    resolves to the most precise hash available.
+    """
+
+    ordinal: int = Field(gt=0)
+    text: str = Field(min_length=1)
+    anchor: str | None = None
+    parent_anchor: str | None = None
+    source_url: str
+
+
+class ParsedPublication(_Frozen):
+    """Pure parser output for one publication: title + ordered chunks."""
+
+    title: str
+    chunks: tuple[HtmlChunk, ...]
+
+
+class RetrievedChunk(_Frozen):
+    """A retrieval hit from the unified chunks index. ``score`` is the fused score."""
+
+    chunk_id: int
+    document_id: int
+    source_type: SourceType
+    document_title: str
+    document_source_url: str
+    ordinal: int
+    text: str
+    png_r2_key: str | None
+    anchor: str | None
+    parent_anchor: str | None
+    source_url: str
+    score: float
+    source: RetrievalSource
+
+
 class PdfDocument(_Frozen):
     """A manufacturer PDF that has been ingested."""
 
