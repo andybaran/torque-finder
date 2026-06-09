@@ -41,8 +41,8 @@ def test_extract_manual_data_json_missing_raises():
 
 
 def test_build_publication_pulls_filters_and_hash():
-    from parts_lookup.domain.models import PublicationRef
     from parts_lookup.discovery.publication_probe import build_publication
+    from parts_lookup.domain.models import PublicationRef
 
     ref = PublicationRef(
         pub_id="6TmfV97fHWv8kvGXVegoTy",

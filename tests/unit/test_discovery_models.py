@@ -7,9 +7,10 @@ def test_publication_ref_is_frozen():
     ref = PublicationRef(pub_id="abc", pub_type="UM", source_url="https://x/abc")
     assert ref.pub_id == "abc"
     import pytest
+    from pydantic import ValidationError
 
-    with pytest.raises(Exception):
-        ref.pub_id = "zzz"  # frozen
+    with pytest.raises(ValidationError):
+        ref.pub_id = "zzz"  # frozen (pydantic raises on mutation)
 
 
 def test_discovered_publication_holds_filter_tuples():

@@ -17,8 +17,8 @@ pytestmark = pytest.mark.asyncio
 async def test_upsert_insert_then_change_detection():
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-    from parts_lookup.domain.models import DiscoveredPublication
     from parts_lookup.discovery.registry import PublicationRegistry
+    from parts_lookup.domain.models import DiscoveredPublication
 
     url = os.environ["DATABASE_URL"]
     if url.startswith("postgresql://"):

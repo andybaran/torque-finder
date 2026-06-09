@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, String, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -70,7 +70,7 @@ class PublicationRegistry:
             await self._session.refresh(row)
             return "inserted"
 
-        row.last_seen_at = datetime.now(timezone.utc)
+        row.last_seen_at = datetime.now(UTC)
         row.referenced_by_models = sorted(
             set(row.referenced_by_models) | set(referenced_by_models)
         )

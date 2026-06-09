@@ -21,8 +21,8 @@ def test_model_page_fixture_yields_real_publication_refs():
 def test_publication_fixture_extracts_nonempty_filters():
     """Guards the real manual-data filter shape (options/value) — regression for
     the silent-empty-filters risk."""
-    from parts_lookup.domain.models import PublicationRef
     from parts_lookup.discovery.publication_probe import build_publication
+    from parts_lookup.domain.models import PublicationRef
 
     html = (FIXTURES / "sram_publication_red_axs.html").read_text(encoding="utf-8")
     ref = PublicationRef(

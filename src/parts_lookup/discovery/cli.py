@@ -7,8 +7,6 @@ import asyncio
 import sys
 from collections.abc import Sequence
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from parts_lookup.config import Settings, get_settings
 from parts_lookup.discovery.crawler import DiscoveryCrawler
 from parts_lookup.discovery.fetcher import Fetcher

@@ -33,7 +33,7 @@ class FakeRegistry:
     def __init__(self) -> None:
         self.upserts: list[tuple[str, list[str]]] = []
 
-    async def upsert(self, pub, referenced_by_models):  # noqa: ANN001
+    async def upsert(self, pub, referenced_by_models):
         self.upserts.append((pub.pub_id, referenced_by_models))
         return "inserted"
 
