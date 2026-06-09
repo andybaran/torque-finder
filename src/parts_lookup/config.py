@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     # --- Sentry ---
     sentry_dsn: str | None = None
 
+    # --- Discovery (SRAM crawl) ---
+    sram_base_url: str = "https://www.sram.com"
+    sram_docs_base_url: str = "https://docs.sram.com"
+    discovery_user_agent: str = (
+        "parts-lookup-discovery/0.1 (+https://github.com/andybaran/torque-finder)"
+    )
+    discovery_max_concurrency: int = Field(default=4, ge=1, le=16)
+    discovery_request_delay_seconds: float = Field(default=0.5, ge=0.0)
+    discovery_cache_dir: str = ".cache/discovery"
+
     @property
     def r2_endpoint_url(self) -> str:
         """S3-compatible endpoint for boto3 / aioboto3."""
