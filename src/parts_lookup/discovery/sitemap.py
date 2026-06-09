@@ -19,3 +19,12 @@ def parse_sitemap_index(xml: str) -> list[str]:
 def model_page_urls(xml: str) -> list[str]:
     """Model-page URLs (…/service/models/<id>) from a <urlset> document."""
     return [u for u in _locs(xml) if "/service/models/" in u]
+
+
+def is_english_sitemap(url: str) -> bool:
+    """True if ``url`` is the English per-language sitemap (``sitemap.en.xml``).
+
+    Matches on the filename so it won't false-positive on unrelated URLs that
+    merely contain ``.en.`` somewhere in the path.
+    """
+    return url.rsplit("/", 1)[-1].startswith("sitemap.en.")

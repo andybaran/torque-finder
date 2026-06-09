@@ -6,11 +6,18 @@ Collaborators are injected (fetcher with `async get(url)`, registry with
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from parts_lookup.discovery.model_page import parse_publication_refs
 from parts_lookup.discovery.publication_probe import build_publication
-from parts_lookup.discovery.sitemap import model_page_urls, parse_sitemap_index
+from parts_lookup.discovery.sitemap import (
+    is_english_sitemap,
+    model_page_urls,
+    parse_sitemap_index,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryCrawler:
@@ -54,7 +61,14 @@ class DiscoveryCrawler:
         """Full crawl: sitemap index → en urlset → every model page → discover_seed."""
         index_xml = await self._fetcher.get(sitemap_index_url)
         child_sitemaps = parse_sitemap_index(index_xml)
-        en_sitemaps = [u for u in child_sitemaps if ".en." in u] or child_sitemaps
+        en_sitemaps = [u for u in child_sitemaps if is_english_sitemap(u)]
+        if not en_sitemaps:
+            logger.warning(
+                "no English sitemap (sitemap.en.*) among %d child sitemaps; "
+                "falling back to crawling all locales",
+                len(child_sitemaps),
+            )
+            en_sitemaps = child_sitemaps
 
         model_ids: list[str] = []
         seen: set[str] = set()

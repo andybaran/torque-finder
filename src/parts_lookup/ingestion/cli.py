@@ -89,7 +89,7 @@ async def _run_ingest_dir(directory: Path) -> int:
                 else:
                     await scope.rollback()
                 rc = max(rc, pdf_rc)
-        except Exception as exc:  # noqa: BLE001 - keep the batch alive
+        except Exception as exc:
             print(
                 f"FAIL {pdf}: unexpected {type(exc).__name__}: {exc}",
                 file=sys.stderr,
