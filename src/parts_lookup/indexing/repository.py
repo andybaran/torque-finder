@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from parts_lookup.domain.errors import PdfNotFoundError
+from parts_lookup.domain.errors import IngestionError, PdfNotFoundError
 from parts_lookup.domain.models import (
     IndexedDocument,
     PageContent,
@@ -295,10 +295,18 @@ class Repository:
         """Insert a document, or refresh title/source_url if source_ref exists.
 
         ``source_ref`` (sha256 for PDFs, pub_id for HTML) is the dedupe key,
-        so re-ingest is idempotent at the document level.
+        so re-ingest is idempotent at the document level. The source_type of
+        an existing document is immutable: a mismatch raises IngestionError
+        rather than silently keeping the old type.
         """
         existing = await self._get_document_orm_by_source_ref(source_ref)
         if existing is not None:
+            if existing.source_type != source_type.value:
+                raise IngestionError(
+                    f"document source_ref={source_ref!r} already exists with "
+                    f"source_type={existing.source_type!r}; refusing upsert as "
+                    f"{source_type.value!r}"
+                )
             existing.title = title
             existing.source_url = source_url
             await self._session.flush()
@@ -346,15 +354,24 @@ class Repository:
         await self._session.flush()
         return row.id
 
-    async def delete_chunks(self, document_id: int) -> None:
-        """Drop all chunks for a document (re-ingest of a stale publication)."""
-        await self._session.execute(delete(Chunk).where(Chunk.document_id == document_id))
+    async def delete_chunks(self, document_id: int) -> int:
+        """Drop all chunks for a document (re-ingest of a stale publication).
+
+        Returns the number of chunk rows deleted (0 for a first ingest).
+        """
+        result = await self._session.execute(
+            delete(Chunk).where(Chunk.document_id == document_id)
+        )
+        return result.rowcount
 
     async def fetch_module_text(self, document_id: int, parent_anchor: str) -> str:
         """Reconstruct a module's full text from its sibling chunks, in order.
 
         Small-to-big extraction (spec §2.3): blocks are embedded individually,
         but Claude reads the whole owning module.
+
+        Returns "" when no chunks match (document_id, parent_anchor) — callers
+        must treat the empty string as "module missing", not as valid text.
         """
         result = await self._session.execute(
             select(Chunk.text)

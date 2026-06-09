@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from parts_lookup.domain.errors import DiscoveryError
 from parts_lookup.domain.models import DiscoveredPublication, RegisteredPublication
 
 # Share the declarative Base + metadata used by alembic's env.py.
@@ -111,6 +112,14 @@ class PublicationRegistry:
     async def get(self, pub_id: str) -> RegisteredPublication | None:
         row = await self._get_row(pub_id)
         return _row_to_domain(row) if row is not None else None
+
+    async def set_status(self, pub_id: str, status: str) -> None:
+        """Flip a publication's lifecycle status (e.g. 'discovered' → 'ingested')."""
+        row = await self._get_row(pub_id)
+        if row is None:
+            raise DiscoveryError(f"unknown publication: {pub_id}")
+        row.status = status
+        await self._session.flush()
 
     async def list_all(self) -> list[RegisteredPublication]:
         result = await self._session.execute(select(Publication).order_by(Publication.id))

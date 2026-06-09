@@ -82,9 +82,43 @@ async def test_document_chunk_round_trip_and_module_reconstruction() -> None:
                 "Crank Installation\n\nTools: TORX: T25\n\nTighten to 40 N·m (354 in-lb)"
             )
 
-            await repo.delete_chunks(doc.id)
+            deleted = await repo.delete_chunks(doc.id)
+            assert deleted == len(rows)  # rider: rowcount, not None
+            assert await repo.delete_chunks(doc.id) == 0  # idempotent re-delete
+            # rider: "" is the explicit no-matching-chunks contract
             assert await repo.fetch_module_text(doc.id, "mod1") == ""
 
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+async def test_upsert_document_source_type_conflict_raises() -> None:
+    """Rider: re-upserting an existing source_ref with a different source_type raises."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from parts_lookup.domain.errors import IngestionError
+    from parts_lookup.domain.models import SourceType
+    from parts_lookup.indexing.repository import Repository
+
+    engine = _engine()
+    ref = f"test-{uuid.uuid4().hex}"
+    try:
+        async with AsyncSession(engine) as session:
+            repo = Repository(session)
+            await repo.upsert_document(
+                source_type=SourceType.HTML,
+                title="Test Pub",
+                source_url=f"https://docs.sram.com/en-US/publications/{ref}",
+                source_ref=ref,
+            )
+            with pytest.raises(IngestionError):
+                await repo.upsert_document(
+                    source_type=SourceType.PDF,
+                    title="Test Pub",
+                    source_url="pdfs/test.pdf",
+                    source_ref=ref,
+                )
             await session.rollback()
     finally:
         await engine.dispose()
