@@ -48,6 +48,7 @@ dev = [
 
 [project.scripts]
 parts-lookup = "parts_lookup.ingestion.cli:main"
+parts-lookup-discover = "parts_lookup.discovery.cli:main"
 
 [build-system]
 requires = ["hatchling"]
