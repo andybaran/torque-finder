@@ -43,6 +43,9 @@ async def test_upsert_insert_then_change_detection():
             reg = PublicationRegistry(session)
 
             assert await reg.upsert(pub, ["ed-red-e1"]) == "inserted"
+            first_row = await reg.get(pub_id)
+            first_discovered_at = first_row.discovered_at
+
             assert await reg.upsert(pub, ["ed-red-e1"]) == "unchanged"
 
             changed = pub.model_copy(update={"content_hash": "hash-v2"})
@@ -52,6 +55,8 @@ async def test_upsert_insert_then_change_detection():
             assert row is not None
             assert row.status == "stale"
             assert set(row.referenced_by_models) == {"ed-red-e1", "cn-red-e1"}
+            assert row.discovered_at == first_discovered_at  # discovered_at is immutable
+            assert any(p.pub_id == pub_id for p in await reg.list_all())  # list_all includes it
 
             # Clean up so the test DB isn't polluted.
             await session.delete(row)

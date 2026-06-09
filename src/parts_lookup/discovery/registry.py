@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, String, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -52,31 +52,34 @@ class PublicationRegistry:
         """Insert or update a publication. Returns 'inserted' | 'unchanged' | 'stale'."""
         row = await self._get_row(pub.pub_id)
         if row is None:
-            self._session.add(
-                Publication(
-                    pub_id=pub.pub_id,
-                    pub_type=pub.pub_type,
-                    title=pub.title,
-                    locale=pub.locale,
-                    source_url=pub.source_url,
-                    series=list(pub.series),
-                    models=list(pub.models),
-                    procedures=list(pub.procedures),
-                    referenced_by_models=sorted(set(referenced_by_models)),
-                    content_hash=pub.content_hash,
-                    status="discovered",
-                )
+            row = Publication(
+                pub_id=pub.pub_id,
+                pub_type=pub.pub_type,
+                title=pub.title,
+                locale=pub.locale,
+                source_url=pub.source_url,
+                series=list(pub.series),
+                models=list(pub.models),
+                procedures=list(pub.procedures),
+                referenced_by_models=sorted(set(referenced_by_models)),
+                content_hash=pub.content_hash,
+                status="discovered",
             )
+            self._session.add(row)
             await self._session.flush()
+            await self._session.refresh(row)
             return "inserted"
 
-        row.last_seen_at = datetime.now().astimezone()
+        row.last_seen_at = datetime.now(timezone.utc)
         row.referenced_by_models = sorted(
             set(row.referenced_by_models) | set(referenced_by_models)
         )
         if row.content_hash != pub.content_hash:
             row.content_hash = pub.content_hash
             row.title = pub.title
+            row.source_url = pub.source_url
+            row.locale = pub.locale
+            row.pub_type = pub.pub_type
             row.series = list(pub.series)
             row.models = list(pub.models)
             row.procedures = list(pub.procedures)
