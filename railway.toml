@@ -1,4 +1,5 @@
-# Railway deployment manifest.
+# Railway deployment manifest (repo-root copy so `railway up` auto-detects it).
+# Source of truth mirrored from infra/railway.toml.
 # Runtime container is intentionally CPU-light: docling/PyTorch live behind
 # the optional `ingestion` extra and are NOT installed here.
 

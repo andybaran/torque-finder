@@ -86,3 +86,25 @@ class Answer(_Frozen):
     source_pdf_id: int
     source_page_no: int
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class PublicationRef(_Frozen):
+    """A publication link found on a model page. ``pub_type`` ∈ {'', 'UM', 'SM', 'BM'}."""
+
+    pub_id: str
+    pub_type: str = ""
+    source_url: str
+
+
+class DiscoveredPublication(_Frozen):
+    """Metadata for one publication, parsed from its embedded manual-data JSON."""
+
+    pub_id: str
+    pub_type: str = ""
+    title: str = ""
+    locale: str = ""
+    source_url: str
+    series: tuple[str, ...] = ()
+    models: tuple[str, ...] = ()
+    procedures: tuple[str, ...] = ()
+    content_hash: str

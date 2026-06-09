@@ -21,3 +21,7 @@ class RetrievalError(PartsLookupError):
 
 class ExtractionError(PartsLookupError):
     """Claude extraction failed or returned malformed output."""
+
+
+class DiscoveryError(PartsLookupError):
+    """Discovery/crawl failed (fetch, parse, or registry write)."""

@@ -24,6 +24,19 @@ _DOCUMENT_INPUT_TYPE = "document"
 
 _STUB_TOKEN_RE = re.compile(r"[A-Za-z0-9]{2,}")
 
+# Voyage caps a single embed() request at ~1000 texts and ~120k tokens.
+# We batch document embedding to stay safely under both. Token counts are
+# estimated from character length (conservatively, ~3 chars/token) so we
+# never need a tokenizer at ingest time; over-estimating just yields
+# slightly smaller, safer batches.
+_MAX_BATCH_TEXTS = 96
+_MAX_BATCH_TOKENS = 100_000
+_MAX_TEXT_CHARS = 96_000  # safety net: keep any single text under the per-input limit
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 3)
+
 
 def _stub_embed(text: str, dim: int) -> list[float]:
     """Hashing-trick bag-of-tokens embedding — deterministic and L2-normalised.
@@ -83,7 +96,25 @@ class VoyageEmbedder:
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        return await self._embed(texts, input_type=_DOCUMENT_INPUT_TYPE)
+        # Split into Voyage-sized requests, bounded by both text count and an
+        # estimated token budget, then concatenate in input order.
+        vectors: list[list[float]] = []
+        batch: list[str] = []
+        batch_tokens = 0
+        for text in texts:
+            clipped = text[:_MAX_TEXT_CHARS]
+            est = _estimate_tokens(clipped)
+            if batch and (
+                len(batch) >= _MAX_BATCH_TEXTS or batch_tokens + est > _MAX_BATCH_TOKENS
+            ):
+                vectors.extend(await self._embed(batch, input_type=_DOCUMENT_INPUT_TYPE))
+                batch = []
+                batch_tokens = 0
+            batch.append(clipped)
+            batch_tokens += est
+        if batch:
+            vectors.extend(await self._embed(batch, input_type=_DOCUMENT_INPUT_TYPE))
+        return vectors
 
     async def _embed(self, texts: list[str], *, input_type: str) -> list[list[float]]:
         if self._stub:

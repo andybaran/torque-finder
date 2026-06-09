@@ -1,0 +1,15 @@
+# Keep the build context small + secrets out of the image.
+.git
+.venv
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+.env.*
+!.env.example
+# 14MB sample PDF + any manuals are ingest-time only, never runtime.
+*.pdf
+.claude/
+docs/

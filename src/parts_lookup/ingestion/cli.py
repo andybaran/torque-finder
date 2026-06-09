@@ -74,17 +74,27 @@ async def _run_ingest_dir(directory: Path) -> int:
 
     settings = get_settings()
     rc = 0
-    async with _PipelineScope(settings) as scope:
-        for pdf in pdfs:
-            pdf_rc = await _ingest_one(scope.pipeline, pdf)
-            # Commit per-PDF so a later crash can't roll back earlier
-            # successes; rollback on per-PDF failure so a half-flushed Pdf
-            # row doesn't poison the next iteration.
-            if pdf_rc == 0:
-                await scope.commit()
-            else:
-                await scope.rollback()
-            rc = max(rc, pdf_rc)
+    for pdf in pdfs:
+        # Fresh scope (and DB session) per PDF. Bounding a connection's
+        # lifetime to a single PDF keeps a long batch robust against a
+        # dropped connection (e.g. a managed-Postgres proxy idle/lifetime
+        # cap over a multi-hour run) — a drop now fails one PDF, not the
+        # whole batch. pool_pre_ping revalidates the pooled connection on
+        # each checkout. SHA-256 dedup makes re-runs skip finished PDFs.
+        try:
+            async with _PipelineScope(settings) as scope:
+                pdf_rc = await _ingest_one(scope.pipeline, pdf)
+                if pdf_rc == 0:
+                    await scope.commit()
+                else:
+                    await scope.rollback()
+                rc = max(rc, pdf_rc)
+        except Exception as exc:  # noqa: BLE001 - keep the batch alive
+            print(
+                f"FAIL {pdf}: unexpected {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            rc = 1
     return rc
 
 
@@ -100,14 +110,13 @@ async def _ingest_one(pipeline: IngestionPipeline, pdf_path: Path) -> int:
 
 
 class _PipelineScope:
-    """Per-PDF transactional scope that owns one session for the whole batch.
+    """Transactional scope that owns one DB session for its lifetime.
 
-    The session lives for the duration of the ``async with`` block (so
-    multi-PDF runs share a connection), but the *caller* commits or rolls
-    back after each PDF. That makes successful ingestions durable as soon
-    as they finish — a native crash on a later PDF can no longer take
-    previous successes with it. Re-running on the same directory then
-    resumes via SHA-256 dedup as designed.
+    Used once per PDF (a fresh scope per file in batch runs), so a session's
+    connection lives only as long as a single ingest. The caller commits on
+    success / rolls back on failure, so a finished PDF is durable
+    immediately and a later failure can't undo it. Re-running resumes via
+    SHA-256 dedup as designed.
     """
 
     def __init__(self, settings: Settings) -> None:
