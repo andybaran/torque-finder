@@ -24,6 +24,9 @@ from parts_lookup.domain.errors import ExtractionError, RetrievalError
 from parts_lookup.domain.models import Query, RetrievedChunk, SourceType
 from parts_lookup.extraction.claude_client import ExtractionCandidate
 from parts_lookup.indexing.repository import Repository
+from parts_lookup.observability import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["query"])
 
@@ -58,6 +61,8 @@ async def query(
 
     repo = Repository(session)
     candidates: list[ExtractionCandidate] = []
+    # Sequential on purpose: repo.fetch_module_text shares this route's single
+    # AsyncSession (no concurrent ops on one session), same constraint as hybrid.py.
     for index, hit in enumerate(retrieved, start=1):
         if hit.source_type is SourceType.PDF:
             if hit.png_r2_key is None:
@@ -65,7 +70,13 @@ async def query(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"PDF chunk {hit.chunk_id} is missing its page PNG key.",
                 )
-            png = await _fetch_png(r2, hit.png_r2_key)
+            try:
+                png = await _fetch_png(r2, hit.png_r2_key)
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Asset store fetch failed.",
+                ) from exc
             candidates.append(
                 ExtractionCandidate(
                     index=index,
@@ -93,10 +104,6 @@ async def query(
             detail=f"Extraction failed: {exc}",
         ) from exc
 
-    # The extractor guarantees source_index maps to a supplied candidate.
-    chosen = retrieved[answer.source_index - 1]
-    source_url, screenshot_url = await _source_links(r2, chosen)
-
     response_candidates: list[Candidate] = []
     for hit, candidate in zip(retrieved, candidates, strict=True):
         hit_source_url, hit_screenshot_url = await _source_links(r2, hit)
@@ -109,6 +116,13 @@ async def query(
                 screenshot_url=hit_screenshot_url,
             )
         )
+
+    # The extractor guarantees source_index maps to a supplied candidate;
+    # reuse that candidate's already-built links rather than recomputing them.
+    chosen = retrieved[answer.source_index - 1]
+    chosen_candidate = response_candidates[answer.source_index - 1]
+    source_url = chosen_candidate.source_url
+    screenshot_url = chosen_candidate.screenshot_url
 
     return AnswerResponse(
         answer=answer.text,
@@ -138,7 +152,14 @@ async def _module_text(repo: Repository, hit: RetrievedChunk) -> str:
     if hit.parent_anchor is None:
         return hit.text
     text = await repo.fetch_module_text(hit.document_id, hit.parent_anchor)
-    return text or hit.text
+    if not text:
+        logger.warning(
+            "query.module_text_missing",
+            chunk_id=hit.chunk_id,
+            parent_anchor=hit.parent_anchor,
+        )
+        return hit.text
+    return text
 
 
 async def _source_links(r2: R2Client, hit: RetrievedChunk) -> tuple[str, str | None]:
