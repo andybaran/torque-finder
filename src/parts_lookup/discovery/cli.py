@@ -16,6 +16,11 @@ from parts_lookup.indexing.session import async_session_factory
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="parts-lookup-discover")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Bypass the on-disk cache and re-fetch every URL.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     seed = sub.add_parser("seed", help="Crawl specific model IDs and their publications.")
@@ -25,18 +30,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _fetcher(settings: Settings) -> Fetcher:
+def _fetcher(settings: Settings, *, force_refresh: bool = False) -> Fetcher:
     return Fetcher(
         user_agent=settings.discovery_user_agent,
         cache_dir=settings.discovery_cache_dir,
         max_concurrency=settings.discovery_max_concurrency,
         delay_seconds=settings.discovery_request_delay_seconds,
+        force_refresh=force_refresh,
     )
 
 
 async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
-    fetcher = _fetcher(settings)
+    fetcher = _fetcher(settings, force_refresh=args.refresh)
     factory = async_session_factory(settings)
     try:
         async with factory() as session:  # type: AsyncSession

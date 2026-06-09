@@ -23,6 +23,7 @@ async def test_fetcher_returns_body(tmp_path):
         user_agent="test-agent",
         cache_dir=str(tmp_path),
         delay_seconds=0.0,
+        respect_robots=False,
         client=_client(calls),
     )
     body = await f.get("https://example.com/a")
@@ -38,6 +39,7 @@ async def test_fetcher_caches_second_request(tmp_path):
         user_agent="test-agent",
         cache_dir=str(tmp_path),
         delay_seconds=0.0,
+        respect_robots=False,
         client=_client(calls),
     )
     await f.get("https://example.com/a")

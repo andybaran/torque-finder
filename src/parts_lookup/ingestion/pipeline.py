@@ -82,8 +82,9 @@ class IngestionPipeline:
             page_count=page_count,
         )
 
-        # Embed all extracted page text in a single Voyage call (Voyage
-        # batches efficiently and we have at most a few hundred pages).
+        # Embed all extracted page text. embed_documents() splits the inputs
+        # into token-bounded batches internally to respect Voyage's per-request
+        # limit, returning one vector per page in input order.
         embed_inputs = [_embed_input(p) for p in parsed_pages]
         try:
             embeddings = await self._embedder.embed_documents(embed_inputs)

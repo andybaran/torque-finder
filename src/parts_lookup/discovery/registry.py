@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
-from parts_lookup.domain.models import DiscoveredPublication
+from parts_lookup.domain.models import DiscoveredPublication, RegisteredPublication
 
 # Share the declarative Base + metadata used by alembic's env.py.
 from parts_lookup.indexing.repository import Base
@@ -37,6 +37,25 @@ class Publication(Base):
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+def _row_to_domain(row: Publication) -> RegisteredPublication:
+    """Map an ORM row to the pure domain read model (ORM rows never escape)."""
+    return RegisteredPublication(
+        pub_id=row.pub_id,
+        pub_type=row.pub_type,
+        title=row.title,
+        locale=row.locale,
+        source_url=row.source_url,
+        series=tuple(row.series),
+        models=tuple(row.models),
+        procedures=tuple(row.procedures),
+        referenced_by_models=tuple(row.referenced_by_models),
+        content_hash=row.content_hash,
+        status=row.status,
+        discovered_at=row.discovered_at,
+        last_seen_at=row.last_seen_at,
     )
 
 
@@ -89,12 +108,13 @@ class PublicationRegistry:
         await self._session.flush()
         return "unchanged"
 
-    async def get(self, pub_id: str) -> Publication | None:
-        return await self._get_row(pub_id)
+    async def get(self, pub_id: str) -> RegisteredPublication | None:
+        row = await self._get_row(pub_id)
+        return _row_to_domain(row) if row is not None else None
 
-    async def list_all(self) -> list[Publication]:
+    async def list_all(self) -> list[RegisteredPublication]:
         result = await self._session.execute(select(Publication).order_by(Publication.id))
-        return list(result.scalars().all())
+        return [_row_to_domain(row) for row in result.scalars().all()]
 
     async def _get_row(self, pub_id: str) -> Publication | None:
         result = await self._session.execute(

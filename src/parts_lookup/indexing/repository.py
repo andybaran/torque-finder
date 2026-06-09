@@ -11,7 +11,15 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Computed, ForeignKey, Index, UniqueConstraint, func, select
+from sqlalchemy import (
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    func,
+    select,
+)
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -33,7 +41,7 @@ class Pdf(Base):
     r2_key: Mapped[str] = mapped_column(nullable=False)
     page_count: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     pages: Mapped[list[Page]] = relationship(
@@ -63,7 +71,7 @@ class Page(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     png_r2_key: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     pdf: Mapped[Pdf] = relationship(back_populates="pages")
