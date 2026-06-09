@@ -108,3 +108,26 @@ class DiscoveredPublication(_Frozen):
     models: tuple[str, ...] = ()
     procedures: tuple[str, ...] = ()
     content_hash: str
+
+
+class RegisteredPublication(_Frozen):
+    """A publication as recorded in the discovery registry (read model).
+
+    Carries the registry-only bookkeeping fields (``status`` and timestamps)
+    that ``DiscoveredPublication`` lacks, so the registry can return a pure
+    domain object instead of leaking ORM rows.
+    """
+
+    pub_id: str
+    pub_type: str
+    title: str
+    locale: str
+    source_url: str
+    series: tuple[str, ...]
+    models: tuple[str, ...]
+    procedures: tuple[str, ...]
+    referenced_by_models: tuple[str, ...]
+    content_hash: str
+    status: str
+    discovered_at: datetime
+    last_seen_at: datetime
