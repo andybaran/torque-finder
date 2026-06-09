@@ -86,8 +86,12 @@ async def hybrid_search(
 ) -> list[RetrievedChunk]:
     """Run keyword + vector sequentially on the shared session, fuse with RRF, hydrate winners.
 
-    (Sequential on purpose: AsyncSession owns a single connection — see the
-    original comment; unchanged behaviour, new unified-chunk shape.)
+    The two channels are *not* run via ``asyncio.gather``: SQLAlchemy's
+    ``AsyncSession`` does not allow concurrent operations on a single
+    session (it only owns one DB connection at a time). End-to-end latency
+    is dominated by the Voyage embedding call anyway, and each chunk query
+    is single-digit-ms at LAN RTT to Postgres, so sequential is fine; if it
+    ever isn't, the right move is two sessions, not gathered ops on one.
     """
     query_embedding = await embedder.embed_query(query_text)
 

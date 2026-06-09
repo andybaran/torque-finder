@@ -127,6 +127,8 @@ async def test_hybrid_search_returns_mixed_source_chunks() -> None:
     from parts_lookup.indexing.repository import Repository
     from parts_lookup.retrieval.embedder import VoyageEmbedder
     from parts_lookup.retrieval.hybrid import hybrid_search
+    from parts_lookup.retrieval.keyword import keyword_search
+    from parts_lookup.retrieval.vector import vector_search
 
     settings = Settings(
         database_url=os.environ["DATABASE_URL"],
@@ -152,7 +154,7 @@ async def test_hybrid_search_returns_mixed_source_chunks() -> None:
                 source_url="pdfs/mixedtest.pdf",
                 source_ref=f"mixed-pdf-{uuid.uuid4().hex}",
             )
-            await repo.insert_chunk(
+            pdf_chunk_id = await repo.insert_chunk(
                 document_id=pdf_doc.id, ordinal=1, text=texts[0], embedding=vecs[0],
                 png_r2_key="pages/mixedtest/0001.png",
                 source_url="pdfs/mixedtest.pdf#page=1",
@@ -163,15 +165,25 @@ async def test_hybrid_search_returns_mixed_source_chunks() -> None:
                 source_url="https://docs.sram.com/en-US/publications/mixedtest",
                 source_ref=f"mixed-html-{uuid.uuid4().hex}",
             )
-            await repo.insert_chunk(
+            html_chunk_id = await repo.insert_chunk(
                 document_id=html_doc.id, ordinal=1, text=texts[1], embedding=vecs[1],
                 anchor="blk1", parent_anchor="mod1",
                 source_url="https://docs.sram.com/en-US/publications/mixedtest#blk1",
             )
 
-            hits = await hybrid_search(
-                session, embedder, f"{marker} crank arm bolt torque", top_k=10
-            )
+            query = f"{marker} crank arm bolt torque"
+            inserted_ids = {pdf_chunk_id, html_chunk_id}
+
+            # Each channel must independently surface both chunks — proves the
+            # fused result isn't carried by one channel alone.
+            keyword_hits = await keyword_search(session, query_text=query, top_k=10)
+            assert inserted_ids <= {cid for cid, _ in keyword_hits}
+
+            query_vec = await embedder.embed_query(query)
+            vector_hits = await vector_search(session, query_embedding=query_vec, top_k=10)
+            assert inserted_ids <= {cid for cid, _ in vector_hits}
+
+            hits = await hybrid_search(session, embedder, query, top_k=10)
             ours = [h for h in hits if marker in h.text]
             assert {h.source_type for h in ours} == {SourceType.PDF, SourceType.HTML}
             html_hit = next(h for h in ours if h.source_type is SourceType.HTML)
