@@ -1,0 +1,1802 @@
+{
+ "title": "Road AXS and XPLR AXS ",
+ "hash": "road-axs-and-xplr-axs-",
+ "type": "User Manual",
+ "metaDescription": "Road AXS and XPLR AXS",
+ "locale": "en-US",
+ "publicationName": "UM - Road AXS and XPLR AXS",
+ "filters": [
+  {
+   "key": "languages",
+   "label": "Languages",
+   "options": [
+    {
+     "value": "cs-CZ",
+     "text": "Český Jazyk"
+    },
+    {
+     "value": "da-DK",
+     "text": "Dansk"
+    },
+    {
+     "value": "de-DE",
+     "text": "Deutsch"
+    },
+    {
+     "value": "en-US",
+     "text": "English"
+    },
+    {
+     "value": "es-ES",
+     "text": "Español"
+    },
+    {
+     "value": "fr-FR",
+     "text": "Français"
+    },
+    {
+     "value": "it-IT",
+     "text": "Italiano"
+    },
+    {
+     "value": "pl-PL",
+     "text": "Język polski"
+    },
+    {
+     "value": "nl-NL",
+     "text": "Nederlands"
+    },
+    {
+     "value": "pt-PT",
+     "text": "Português"
+    },
+    {
+     "value": "ro-RO",
+     "text": "Română"
+    },
+    {
+     "value": "el-GR",
+     "text": "Ελληνικά"
+    },
+    {
+     "value": "ko-KR",
+     "text": "한국어"
+    },
+    {
+     "value": "ja-JP",
+     "text": "日本語"
+    },
+    {
+     "value": "zh-CN",
+     "text": "简体中文"
+    }
+   ]
+  },
+  {
+   "key": "models",
+   "label": "Models",
+   "options": [
+    {
+     "value": "cn-frc-e1",
+     "text": "CN-FRC-E1"
+    },
+    {
+     "value": "cn-red-e1",
+     "text": "CN-RED-E1"
+    },
+    {
+     "value": "cn-riv-e1",
+     "text": "CN-RIV-E1"
+    },
+    {
+     "value": "cr-frc-kit-e1",
+     "text": "CR-FRC-KIT-E1"
+    },
+    {
+     "value": "cr-frc-tmkt-e1",
+     "text": "CR-FRC-TMKT-E1"
+    },
+    {
+     "value": "cr-red-kit-e1",
+     "text": "CR-RED-KIT-E1"
+    },
+    {
+     "value": "cr-riv-kit-e1",
+     "text": "CR-RIV-KIT-E1"
+    },
+    {
+     "value": "cr-xsnc-dm-e1",
+     "text": "CR-XSNC-DM-E1"
+    },
+    {
+     "value": "cs-xg-1270-e1",
+     "text": "CS-XG-1270-E1"
+    },
+    {
+     "value": "cs-xg-1290-e1",
+     "text": "CS-XG-1290-E1"
+    },
+    {
+     "value": "cs-xg-1351-e1",
+     "text": "CS-XG-1351-E1"
+    },
+    {
+     "value": "cs-xg-1371-e1",
+     "text": "CS-XG-1371-E1"
+    },
+    {
+     "value": "cs-xg-1391-e1",
+     "text": "CS-XG-1391-E1"
+    },
+    {
+     "value": "ed-frc-e1",
+     "text": "ED-FRC-E1"
+    },
+    {
+     "value": "ed-red-e1",
+     "text": "ED-RED-E1"
+    },
+    {
+     "value": "ed-riv-e1",
+     "text": "ED-RIV-E1"
+    },
+    {
+     "value": "fc-frc-1-e1",
+     "text": "FC-FRC-1-E1"
+    },
+    {
+     "value": "fc-frc-1p-e1",
+     "text": "FC-FRC-1P-E1"
+    },
+    {
+     "value": "fc-frc-1w-e1",
+     "text": "FC-FRC-1W-E1"
+    },
+    {
+     "value": "fc-frc-1wp-e1",
+     "text": "FC-FRC-1WP-E1"
+    },
+    {
+     "value": "fc-frc-assy-e1",
+     "text": "FC-FRC-ASSY-E1"
+    },
+    {
+     "value": "fc-frc-e1",
+     "text": "FC-FRC-E1"
+    },
+    {
+     "value": "fc-frc-p-e1",
+     "text": "FC-FRC-P-E1"
+    },
+    {
+     "value": "fc-red-1-e1",
+     "text": "FC-RED-1-E1"
+    },
+    {
+     "value": "fc-red-1p-e1",
+     "text": "FC-RED-1P-E1"
+    },
+    {
+     "value": "fc-red-1w-e1",
+     "text": "FC-RED-1W-E1"
+    },
+    {
+     "value": "fc-red-1wp-e1",
+     "text": "FC-RED-1WP-E1"
+    },
+    {
+     "value": "fc-red-assy-e1",
+     "text": "FC-RED-ASSY-E1"
+    },
+    {
+     "value": "fc-red-e1",
+     "text": "FC-RED-E1"
+    },
+    {
+     "value": "fc-red-p-e1",
+     "text": "FC-RED-P-E1"
+    },
+    {
+     "value": "fc-riv-1p-e1",
+     "text": "FC-RIV-1P-E1"
+    },
+    {
+     "value": "fc-riv-1w-e1",
+     "text": "FC-RIV-1W-E1"
+    },
+    {
+     "value": "fc-riv-1wp-e1",
+     "text": "FC-RIV-1WP-E1"
+    },
+    {
+     "value": "fc-riv-assy-e1",
+     "text": "FC-RIV-ASSY-E1"
+    },
+    {
+     "value": "fc-riv-e1",
+     "text": "FC-RIV-E1"
+    },
+    {
+     "value": "fc-riv-p-e1",
+     "text": "FC-RIV-P-E1"
+    },
+    {
+     "value": "fd-frc-e-e1",
+     "text": "FD-FRC-E-E1"
+    },
+    {
+     "value": "fd-red-e-e1",
+     "text": "FD-RED-E-E1"
+    },
+    {
+     "value": "fd-riv-e-e1",
+     "text": "FD-RIV-E-E1"
+    },
+    {
+     "value": "gs-frc-e-e1",
+     "text": "GS-FRC-E-E1"
+    },
+    {
+     "value": "gs-frc-ukit-e1",
+     "text": "GS-FRC-UKIT-E1"
+    },
+    {
+     "value": "gs-red-e-e1",
+     "text": "GS-RED-E-E1"
+    },
+    {
+     "value": "gs-red-kit-e1",
+     "text": "GS-RED-KIT-E1"
+    },
+    {
+     "value": "pm-axs-kita-e1",
+     "text": "PM-AXS-KITA-E1"
+    },
+    {
+     "value": "pm-axs-kitr-e1",
+     "text": "PM-AXS-KITR-E1"
+    },
+    {
+     "value": "pm-frc-assy-e1",
+     "text": "PM-FRC-ASSY-E1"
+    },
+    {
+     "value": "pm-riv-assy-e1",
+     "text": "PM-RIV-ASSY-E1"
+    },
+    {
+     "value": "rd-frc-1e-e1",
+     "text": "RD-FRC-1E-E1"
+    },
+    {
+     "value": "rd-frc-e-e1",
+     "text": "RD-FRC-E-E1"
+    },
+    {
+     "value": "rd-red-1e-e1",
+     "text": "RD-RED-1E-E1"
+    },
+    {
+     "value": "rd-red-e-e1",
+     "text": "RD-RED-E-E1"
+    },
+    {
+     "value": "rd-riv-1e-e1",
+     "text": "RD-RIV-1E-E1"
+    },
+    {
+     "value": "rd-riv-e-e1",
+     "text": "RD-RIV-E-E1"
+    }
+   ]
+  },
+  {
+   "key": "series",
+   "label": "Series",
+   "options": [
+    {
+     "value": "force-axs",
+     "text": "Force AXS"
+    },
+    {
+     "value": "force-xplr-axs",
+     "text": "Force XPLR AXS"
+    },
+    {
+     "value": "red-axs",
+     "text": "RED AXS"
+    },
+    {
+     "value": "red-xplr-axs",
+     "text": "RED XPLR AXS"
+    },
+    {
+     "value": "rival-axs",
+     "text": "Rival AXS"
+    },
+    {
+     "value": "rival-xplr-axs",
+     "text": "Rival XPLR AXS"
+    }
+   ]
+  },
+  {
+   "key": "procedure",
+   "label": "Procedure",
+   "options": [
+    {
+     "value": "installation-1-x-12",
+     "text": "Installation - 1 x 12"
+    },
+    {
+     "value": "installation-1-x-13-xplr",
+     "text": "Installation - 1 x 13 XPLR"
+    },
+    {
+     "value": "installation-2-x-12",
+     "text": "Installation - 2 x 12"
+    },
+    {
+     "value": "service-12-speed",
+     "text": "Service - 12 Speed"
+    },
+    {
+     "value": "service-13-speed-xplr",
+     "text": "Service - 13 Speed XPLR"
+    }
+   ]
+  }
+ ],
+ "publicationImage": {
+  "url": "https://images.ctfassets.net/enhz2tloa31p/51J3ivrtjCTgIAaLUontUE/9d1905bf1679396e85000b7ab7284bbf/SR_User_Manual_Road_XPLR_E1.jpg",
+  "details": {
+   "Size": 2632185,
+   "Image": {
+    "Height": 2500,
+    "Width": 3750
+   }
+  },
+  "width": 3750,
+  "height": 2500,
+  "fileName": "SR_User_Manual_Road_XPLR_E1.jpg",
+  "contentType": "image/jpeg",
+  "alt": "",
+  "type": "Road AXS and XPLR Cover",
+  "title": null
+ },
+ "brandImage": {
+  "brandName": "Brand Image - SRAM",
+  "url": "https://images.ctfassets.net/enhz2tloa31p/ia3j9yIKupThIiCnoqohI/8104a8e6dd2d515c3d0653d3dfc63cd9/SRAM_Logo_white_on_transparent.png",
+  "details": {
+   "Size": 3499,
+   "Image": {
+    "Height": 75,
+    "Width": 591
+   }
+  },
+  "width": 591,
+  "height": 75,
+  "fileName": "SRAM Logo white on transparent.png",
+  "contentType": "image/png",
+  "alt": null,
+  "type": "SRAM Logo white on transparent.png",
+  "title": null
+ },
+ "legend": {
+  "id": "2r6bmwMngZiclCqwisMJKZ",
+  "type": "Legend",
+  "title": "Legend",
+  "titleEmphasis": false,
+  "hash": "legend",
+  "filters": [],
+  "content": [
+   {
+    "name": "Legend - Torque",
+    "label": "Torque",
+    "description": "Tighten a fastener to a specified value, or apply a tightening force.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/2hZQ04sjc6R7udw5qHf8K1/c1f417493d81c419d527d1c87a31f441/Torque.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Torque.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Remove",
+    "label": "Remove",
+    "description": "Remove the component as indicated, either by hand or with a specified tool.",
+    "alt": "Remove",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/7AxoJ6yjKkkEFj3PUT8ByX/6db7b44cf3e5fdd5493c376a3ed20673/Remove.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Remove.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Install",
+    "label": "Install",
+    "description": "Install the component in the indicated position by pressing, attaching, or placing.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4XgIrBh0mPQEHME0IU7g1T/001c460f8476273a846ff612b64922af/Install.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Install.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Measure",
+    "label": "Measure",
+    "description": "Measure a length or distance to a specified value.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/6LUMmwDM5JWF1ghzklouIH/2e80491f37efcfee6ada0c373f27a195/Measure.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Measure.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Grease",
+    "label": "Apply Grease",
+    "description": "Apply grease to lubricate and protect components from friction and/or moisture.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4J2P0Sqh8fZqwuMNGXjZjG/9c32a43972c1dbaca92eeeec8ecab5af/Grease.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Grease.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Adjust",
+    "label": "Adjust",
+    "description": "Adjust the component to the indicated position by moving, sliding, or rotating.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/ly7SW2e9WtBJT5Dm09Fe7/18c8f65efce219fa0db74c26bb2a4b31/Adjust.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "Adjust.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Friction Paste",
+    "label": "Apply Friction Paste",
+    "description": "Apply friction paste to prevent movement between surfaces.",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/6naqYC6rj7cJYVVU45vbRf/b45efd62e1c96d7b4eae85c3f3fd39eb/FrictionPaste.svg",
+    "details": {
+     "Size": 275,
+     "Image": {
+      "Height": 18,
+      "Width": 21
+     }
+    },
+    "width": 21,
+    "height": 18,
+    "fileName": "FrictionPaste.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Press and Release",
+    "label": "Press and Release",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3MKx786SJPntihYqxeBGaE/184b2b70c8ea69d3f95c999120607c89/icon_-_Press_and_Release.svg",
+    "details": {
+     "Size": 865,
+     "Image": {
+      "Height": 15,
+      "Width": 15
+     }
+    },
+    "width": 15,
+    "height": 15,
+    "fileName": "icon - Press and Release.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Press and Hold",
+    "label": "Press and Hold",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4bVTO7r4tFkwOvOvCPyXKi/3156e83e63bb7f86bac9f3a543bc7469/icon_-_Press_and_Hold.svg",
+    "details": {
+     "Size": 1122,
+     "Image": {
+      "Height": 14,
+      "Width": 28
+     }
+    },
+    "width": 28,
+    "height": 14,
+    "fileName": "icon_-_Press_and_Hold.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Double Press",
+    "label": "Double Press",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/65pkqUaN4bKn49J8W18A7R/a6a251099fca38d348b4f9179b11c263/Double_Press.svg",
+    "details": {
+     "Size": 1283,
+     "Image": {
+      "Height": 123,
+      "Width": 248
+     }
+    },
+    "width": 248,
+    "height": 123,
+    "fileName": "Double_Press.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Press and Hold While Shifting",
+    "label": "Press and Hold While Shifting",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/5ZwEHooXPJPRoI5XXNzn6Z/fae2e9be0e5883005a8146f1b0227753/icon_-_Press_and_Hold_Arrows.svg",
+    "details": {
+     "Size": 1745,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "icon_-_Press_and_Hold Arrows.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Shifter LED Battery Status - Green",
+    "label": "Green",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/1vAYdNzwKuAmhA59gIClgD/3bfdb5d36b1473821c1516e272f8c55a/Battery_charge_level_GREEN_3-02.svg",
+    "details": {
+     "Size": 4349,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "Battery charge level GREEN 3-02.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Shifter LED Battery Status - Red",
+    "label": "Red",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3PiB5xVoWPXjXDyKrLQkVo/ebb08b65ea9de7e9d993fe53f1d90dce/Battery_charge_level_RED_3-02.svg",
+    "details": {
+     "Size": 4404,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "Battery charge level RED 3-02.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - LED Shifter Battery Status - Red Flashing",
+    "label": "Red Flashing",
+    "description": null,
+    "alt": "Battery life indicator -",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3qHsb30w2TbPff7mhOZQ3B/e21ecf06cafe03d67d0b245a899a14a3/Battery_charge_level_RED_Flashing_3-02.svg",
+    "details": {
+     "Size": 1526,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "Battery charge level RED Flashing 3-02.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Legend - Battery Life - RD Rejected Shift",
+    "label": "Rejected Shift - Rear Derailleur",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/329sJes0xqWFRBBqG1OEbE/6058f8b8e7744531af2f2f9e28a34bbf/Battery_charge_level_Rejected_3-02.svg",
+    "details": {
+     "Size": 4816,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "Battery charge level Rejected 3-02.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   }
+  ]
+ },
+ "toolList": {
+  "id": "2rVumfWlkFabW3Jw4tTzBt",
+  "type": "ToolList",
+  "title": "Tools and Supplies",
+  "titleEmphasis": false,
+  "hash": "tools-and-supplies",
+  "filters": [],
+  "content": [
+   {
+    "name": "Tool List - Divider - Safety and Protection Supplies",
+    "label": "Safety and Protection Supplies",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4LftM63LO6zaKe86rgcWp1/43dbeaa12c3c49a1df4b95ffd850d41a/Icon_Black_Line.svg",
+    "details": {
+     "Size": 237,
+     "Image": {
+      "Height": 7,
+      "Width": 126
+     }
+    },
+    "width": 126,
+    "height": 7,
+    "fileName": "Icon Black Line.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Safety Glasses",
+    "label": "Safety Glasses",
+    "description": null,
+    "alt": "Safety Requirements symbol",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/5zQ6ENW3ShItdqPwfLdF1D/e2086a260438782f244a16086a3fbb69/General_Safety_Smaller.svg",
+    "details": {
+     "Size": 49045,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "General_Safety_Smaller.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Gloves",
+    "label": "Nitrile Gloves",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/36inGifIGKZCWXlyFqYITb/3d3a867d6edea1acc1225748551ea998/icon_-_Gloves.svg.png",
+    "details": {
+     "Size": 9449,
+     "Image": {
+      "Height": 124,
+      "Width": 97
+     }
+    },
+    "width": 97,
+    "height": 124,
+    "fileName": "icon_-_Gloves.svg.png",
+    "contentType": "image/png",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Divider - Lubricants and Fluids",
+    "label": "Lubricants and Fluids",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4LftM63LO6zaKe86rgcWp1/43dbeaa12c3c49a1df4b95ffd850d41a/Icon_Black_Line.svg",
+    "details": {
+     "Size": 237,
+     "Image": {
+      "Height": 7,
+      "Width": 126
+     }
+    },
+    "width": 126,
+    "height": 7,
+    "fileName": "Icon Black Line.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Grease",
+    "label": "Grease",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/6ZTkfBMPXmSq3M3C8elhTg/ba7b95dc894a1aeab81d1278db8af2b2/icon_-_Grease_Bottle.svg",
+    "details": {
+     "Size": 3910,
+     "Image": {
+      "Height": 56,
+      "Width": 55
+     }
+    },
+    "width": 55,
+    "height": 56,
+    "fileName": "icon - Grease Bottle.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Friction Paste",
+    "label": "Friction Paste",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/WjpSzOoR2VyR0JG3TkhXv/d5a81121103bcb7b41f22c73ad22b27e/icon_-_Friction_Paste.svg",
+    "details": {
+     "Size": 3655,
+     "Image": {
+      "Height": 60,
+      "Width": 59
+     }
+    },
+    "width": 59,
+    "height": 60,
+    "fileName": "icon - Friction Paste.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Divider - Bicycle Tools",
+    "label": "Bicycle Tools",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4LftM63LO6zaKe86rgcWp1/43dbeaa12c3c49a1df4b95ffd850d41a/Icon_Black_Line.svg",
+    "details": {
+     "Size": 237,
+     "Image": {
+      "Height": 7,
+      "Width": 126
+     }
+    },
+    "width": 126,
+    "height": 7,
+    "fileName": "Icon Black Line.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Dual-Sided Chain Gap Adjustment Gauge - 12T Pulley",
+    "label": "Dual-Sided Chain Gap Adjustment Gauge - 12T Pulley",
+    "description": "11.7518.100.001 RD CHAINGAP ADJ GAUGE ALL ETAP AXS 26-44",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/48jpIPTUgHXQe6shzoPfYm/a43f3f06f304b25b2a7d3ba534142408/RD_Set_Up_Tool_1.svg",
+    "details": {
+     "Size": 22503,
+     "Image": {
+      "Height": 256,
+      "Width": 255
+     }
+    },
+    "width": 255,
+    "height": 256,
+    "fileName": "RD Set Up Tool 1.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Icon - Threaded Chainring Removal Tool",
+    "label": "SRAM Threaded Chainring Removal Tool ",
+    "description": "00.6218.065.000 (1x and 2x) ; \n00.6218.042.000 (1x only)",
+    "alt": "00.6218.065.000 - 1x and 2x SRAM Threadmount Power Meters\n00.6218.042.000 - 1x SRAM Threadmount Power Meter ONLY",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/6Woyah1b3v35jX91W1ZIQy/b417c74434012c145f056db20d5e2b1d/Tool_List_-_Icon_-_Threaded_Powermeter_Chainring_Removal_Tool.svg",
+    "details": {
+     "Size": 27573,
+     "Image": {
+      "Height": 90,
+      "Width": 90
+     }
+    },
+    "width": 90,
+    "height": 90,
+    "fileName": "Tool List - Icon - Threaded Powermeter Chainring Removal Tool.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Chain tool",
+    "label": "Chain tool",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4o6nE3B6veI6kKV0WcDh5Z/3d26be3976a00833bacbddd8fcb6e91f/ChainTool_black_Park_3.svg",
+    "details": {
+     "Size": 11548,
+     "Image": {
+      "Height": 231,
+      "Width": 250
+     }
+    },
+    "width": 250,
+    "height": 231,
+    "fileName": "ChainTool_black_Park_3.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Chain checker",
+    "label": "Chain checker",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/SMdejwvuu1MXkCEgS7N9J/7a53c33e16af18aec07ab3aaafeb80a0/Chain_Checker_Pedros.svg",
+    "details": {
+     "Size": 1637,
+     "Image": {
+      "Height": 170,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 170,
+    "fileName": "Chain Checker Pedros.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Hanger Alignment Tool",
+    "label": "Hanger Alignment Tool",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/9W6nFO4hSc6PHbRwu24GZ/c901da90a8322413366bca8ac68c6ca3/HangerAlignmentTool.svg",
+    "details": {
+     "Size": 5458,
+     "Image": {
+      "Height": 238,
+      "Width": 252
+     }
+    },
+    "width": 252,
+    "height": 238,
+    "fileName": "HangerAlignmentTool.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Lockring tool",
+    "label": "Lockring Tool",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3rjlgiYAWl5RDyeB8N6gBg/a81cc135f42d0465dbf0886fa3d3aa26/icon_-_Lockring_Tool.svg",
+    "details": {
+     "Size": 4678,
+     "Image": {
+      "Height": 110,
+      "Width": 110
+     }
+    },
+    "width": 110,
+    "height": 110,
+    "fileName": "icon - Lockring Tool.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Lockring tool with pin",
+    "label": "Lockring tool with pin",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/1AxB5xMojQvih0KW69ZOiq/8f490760256081c4d1f6091555396342/lockring_tool_wPin_black.svg",
+    "details": {
+     "Size": 2764,
+     "Image": {
+      "Height": 252,
+      "Width": 145
+     }
+    },
+    "width": 145,
+    "height": 252,
+    "fileName": "lockring_tool_wPin_black.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - RED AXS Front Derailleur Set Up Tool",
+    "label": "RED AXS Front Derailleur Setup Tool",
+    "description": "00.7618.179.000 AM FD E1 46T-50T SET UP TOOL \\\n\n00.7618.181.000 AM FD RED24 52T-56T SET UP TOOL",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3sTYpjnXlQk1PRk1Lvftwy/ed3c13364189e829d11506ed96c8d79d/icon_-_RED_AXS_FD_Tool.svg",
+    "details": {
+     "Size": 1766,
+     "Image": {
+      "Height": 147,
+      "Width": 255
+     }
+    },
+    "width": 255,
+    "height": 147,
+    "fileName": "icon - RED AXS FD Tool.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Divider - Common Tools",
+    "label": "Common Tools",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/4LftM63LO6zaKe86rgcWp1/43dbeaa12c3c49a1df4b95ffd850d41a/Icon_Black_Line.svg",
+    "details": {
+     "Size": 237,
+     "Image": {
+      "Height": 7,
+      "Width": 126
+     }
+    },
+    "width": 126,
+    "height": 7,
+    "fileName": "Icon Black Line.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Adjustable wrench",
+    "label": "Adjustable wrench",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/66XQFHsjPhaUMT1Isqh8Be/23080549a531514ad32e6f34178f5549/Adjustable_wrench.svg",
+    "details": {
+     "Size": 1920,
+     "Image": {
+      "Height": 253,
+      "Width": 225
+     }
+    },
+    "width": 225,
+    "height": 253,
+    "fileName": "Adjustable_wrench.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Phillips Head Screwdriver",
+    "label": "Phillips Head Screwdriver",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/5ksjnadcLa9mFJ5sVfa0p2/0fb7926ff0c9971f6c0a5f14eea3398b/phillipshead_black.svg",
+    "details": {
+     "Size": 2200,
+     "Image": {
+      "Height": 256,
+      "Width": 256
+     }
+    },
+    "width": 256,
+    "height": 256,
+    "fileName": "phillipshead_black.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - Torque Wrench",
+    "label": "Torque Wrench",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/zQFw0zohPuS6FYFSAL57z/c318db88193031092c30f5c8add3488f/icon_-_Torque_Wrench.svg",
+    "details": {
+     "Size": 4739,
+     "Image": {
+      "Height": 73,
+      "Width": 70
+     }
+    },
+    "width": 70,
+    "height": 73,
+    "fileName": "icon - Torque Wrench.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Icon - Crowfoot",
+    "label": "Crowfoot",
+    "description": null,
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/7f2mcocFP6knnffFOVN8eB/0fce85f1976e15b4ff25354c6b6835c8/Crowfoot.svg.png",
+    "details": {
+     "Size": 4133,
+     "Image": {
+      "Height": 111,
+      "Width": 101
+     }
+    },
+    "width": 101,
+    "height": 111,
+    "fileName": "Crowfoot.svg.png",
+    "contentType": "image/png",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - eTap AXS - Hex Wrenches",
+    "label": "Hex Wrenches",
+    "description": "2, 2.5, 3, 4, 5, 8 mm",
+    "alt": "Hex tool icon",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/1v266mOjaOrOMwL5w0qIEW/52ccf50678d8ee1db206dfd9b406121a/icon_-_Hex.svg",
+    "details": {
+     "Size": 305,
+     "Image": {
+      "Height": 19,
+      "Width": 22
+     }
+    },
+    "width": 22,
+    "height": 19,
+    "fileName": "icon - Hex.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - eTap AXS - Hex Bit Socket",
+    "label": "Hex Bit Socket",
+    "description": "2, 2.5, 3, 4, 5, 8 mm",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/108nEc6gu8FCDByDdeSh5C/9407e95fb019f73e5705df229ece8252/icon_-_Hex_Bit_Socket.svg",
+    "details": {
+     "Size": 3801,
+     "Image": {
+      "Height": 38,
+      "Width": 54
+     }
+    },
+    "width": 54,
+    "height": 38,
+    "fileName": "icon - Hex Bit Socket.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - eTap AXS - TORX Wrenches",
+    "label": "TORX Wrenches",
+    "description": "T25",
+    "alt": "TORX icon",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/3IppmprRkyiyOjJoXLCTLV/f706283e1b84eb186dfb11febd14f03f/icon_-_TORX.svg",
+    "details": {
+     "Size": 391,
+     "Image": {
+      "Height": 19,
+      "Width": 22
+     }
+    },
+    "width": 22,
+    "height": 19,
+    "fileName": "icon - TORX.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   },
+   {
+    "name": "Tool List - eTap AXS - TORX Bit Socket",
+    "label": "TORX Bit Sockets",
+    "description": "T25",
+    "alt": "",
+    "url": "https://images.ctfassets.net/enhz2tloa31p/5aLCM1NeCUAQGDfn7lH3uA/e5cb763a37103b81510ceaa517ad4461/icon_-_TORX_Bit_Socket.svg",
+    "details": {
+     "Size": 8772,
+     "Image": {
+      "Height": 38,
+      "Width": 48
+     }
+    },
+    "width": 48,
+    "height": 38,
+    "fileName": "icon - TORX Bit Socket.svg",
+    "contentType": "image/svg+xml",
+    "type": "icon",
+    "title": null
+   }
+  ]
+ },
+ "modules": [
+  {
+   "id": "43zaAbikieOuEbJH1IIlDF",
+   "title": "Safety and Precautions",
+   "hash": "safety-and-precautions",
+   "filters": [],
+   "children": [
+    {
+     "id": "6PW9YZ7i2Fg9beQZpUcVR2",
+     "type": "block",
+     "title": "General Safety",
+     "titleEmphasis": false,
+     "hash": "general-safety",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p><strong>Safety First!</strong></p><p>We care about YOU. Please, always wear your safety glasses and protective gloves when servicing SRAM products. Protect yourself! Wear your safety gear!</p>",
+       "images": [
+        {
+         "imageName": "icon - TC - General Safety",
+         "caption1": null,
+         "caption1color": null,
+         "caption2": null,
+         "caption2color": null,
+         "caption3": null,
+         "caption3color": null,
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/5zQ6ENW3ShItdqPwfLdF1D/e2086a260438782f244a16086a3fbb69/General_Safety_Smaller.svg",
+         "details": {
+          "Size": 49045,
+          "Image": {
+           "Height": 256,
+           "Width": 256
+          }
+         },
+         "width": 256,
+         "height": 256,
+         "fileName": "General_Safety_Smaller.svg",
+         "contentType": "image/svg+xml",
+         "alt": "Safety Requirements symbol",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "25nudUQVbqvy3lG7lN61Lv",
+     "type": "block",
+     "title": "Safety Instructions",
+     "titleEmphasis": false,
+     "hash": "safety-instructions",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p><strong>HYDRAULIC DISC BRAKES</strong></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      },
+      {
+       "noticeType": "ansi-instructions",
+       "content": "<p>You must read and understand the Safety Instructions document included with your product before proceeding with the installation. Improperly installed components are extremely dangerous and could result in severe and/or fatal injuries. If you have any questions about the installation of these components, consult a qualified bicycle mechanic. This document is also available on <a href=\"https://www.sram.com/globalassets/document-hierarchy/safety-instructions/safety-instructions-for-disc-and-hydro-brakes.pdf\" title=\"\">www.sram.com</a>.</p><p><strong>1. </strong>Follow the safety instructions listed here. Any failure to follow these safety instructions could cause you to crash while riding your bicycle, which could result in serious and/or fatal injuries.</p><p><strong>2. </strong>SRAM hydraulic disc brakes are intended for single-rider use; they are not intended for multi-rider cycling equipment.</p><p><strong>3. </strong>Have your brakes installed, secured, and maintained by a qualified bicycle mechanic. </p><p><strong>4. </strong>Brakes are a safety-critical component of a bicycle. Improper installation or use of brakes can result in loss of control of the bicycle which can lead to a crash that can cause severe injury and/or death. Follow the instructions in the user manual for proper installation.</p><p><strong>5. </strong>Disc brakes offer increased stopping power over rim brakes and take less effort to lock-up a wheel when braking. Wheel lockup may cause you to lose control and lead to injury. Practice braking techniques on a flat level surface prior to aggressive riding.</p><p><strong>6. </strong>Braking effectiveness is dependent on many conditions over which SRAM has no control including: bicycle speed, braking force, condition of the bike, weight of the rider, weather, terrain, and a variety of other factors. Always ride under control. It takes longer to stop in wet conditions. To reduce the possibility of a crash avoid locking-up your wheels. </p><p><strong>7. </strong>If using SRAM Mineral Oil brakes in temperatures below -20&#176;C (-4&#176;F), you may experience reduced braking performance. SRAM recommends using a SRAM DOT fluid hydraulic brake system if you ride at or below these temperatures.  </p><p><strong>8. </strong>SRAM disc brakes are designed as a system. Do not use brake components from a manufacturer other than SRAM.</p><p><strong>9. </strong>Use only DOT 4 or DOT 5.1 brake fluids with SRAM DOT fluid hydraulic brakes. Use only Maxima Mineral Brake oil in SRAM mineral oil brakes. Use of any other fluid or oil may damage the system and make the brakes unsafe to use.  </p><p><strong>10. </strong>Do not allow any brake fluid or oil to contact the brake pads. If this occurs, the pads are contaminated and must be replaced.</p><p><strong>11. </strong>Do not allow any brake fluid or oil to contact the rotors. If this occurs, clean the rotors with isopropyl alcohol. </p><p><strong>12. </strong>Do not touch the braking surface of the rotor with your bare hands. The oils from your fingers will degrade braking performance. Always wear gloves or handle the rotor by the spokes. </p><p><strong>13. </strong>Do not touch disc brake rotors or calipers immediately after use; they become very hot during use and could cause burns. Allow them to cool prior to making any adjustments.</p><p><strong>14. </strong>Do not use SRAM hydraulic disc brakes with radially spoked wheels. </p>",
+       "type": "notice",
+       "title": "Safety Instructions"
+      }
+     ]
+    },
+    {
+     "id": "6FSurWehSAGDZ1NM2Msu7y",
+     "type": "block",
+     "title": null,
+     "titleEmphasis": false,
+     "hash": null,
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p><strong></strong></p><p><strong>COIN BATTERIES</strong></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      },
+      {
+       "noticeType": "ansi-warning",
+       "content": "<p><strong>INGESTION HAZARD</strong></p><p>This product contains a button cell or coin battery.</p><p><strong>DEATH</strong> or serious injury can occur if ingested.</p><p>A swallowed button cell or coin battery can cause<strong> INTERNAL CHEMICAL BURNS</strong> in as little as <strong>TWO HOURS</strong>.</p><p><strong>KEEP</strong> new and used batteries <strong>OUT OF REACH OF CHILDREN</strong>.</p><p><strong>SEEK IMMEDIATE MEDICAL ATTENTION</strong> if a battery is suspected to be swallowed or inserted inside any part of the body.</p>",
+       "type": "notice",
+       "title": "Warning"
+      },
+      {
+       "step": "notastep",
+       "content": "<p><strong>NO OBVIOUS SYMPTOMS</strong></p><p>Unfortunately, it is not obvious when a button or coin battery is stuck in a child&#39;s esophagus. There are no specific symptoms associated with this. </p><p>The child might:</p><ul><li><p>Cough, gag or drool a lot </p></li><li><p>Appear to have an upset stomach or a virus </p></li><li><p>Be sick</p></li><li><p>Point to their throat or stomach</p></li><li><p>Have pain in their abdomen, chest, or throat</p></li><li><p>Be tired or lethargic</p></li><li><p>Be quieter or more clingy than usual or otherwise “not themselves” </p></li><li><p>Lose their appetite or have a reduced appetite, not want to eat solid food, or be unable to eat solid food</p></li></ul><p>These sorts of symptoms vary or fluctuate, with the pain increasing and then subsiding. A specific symptom to button and coin battery ingestion is vomiting fresh (bright red) blood. If the child does this seek immediate medical help. The lack of clear symptoms is why it is important to be vigilant with “flat” or spare button or coin batteries in the home and the products that contain them.</p><p>\n</p><p></p>",
+       "images": [
+        {
+         "imageName": "um-general-coin cell battery - safety icons - keep out of reach of babies",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/2sF4TZy4s0MiEiy61vXpCC/3421da158be0b5d29a7c63dc15705a6e/um-general-coin_cell_battery_-_safety_icons_-_keep_out_of_reach_of_babies.jpg",
+         "details": {
+          "Size": 138275,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "um-general-coin cell battery - safety icons - keep out of reach of babies.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "um-general-coin cell battery - safety icons Keep-out-of-reach-of-children blue",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/1h5kMJ3H2BEO7yQMeCXQeo/e357fd7871a4bbe6516c35f30fd31699/um-general-coin_cell_battery_-_safety_icons_Keep-out-of-reach-of-children_blue.jpg",
+         "details": {
+          "Size": 124401,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "um-general-coin cell battery - safety icons Keep-out-of-reach-of-children_blue.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "um-general-coin cell battery - safety icons - safety alert icon",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/33pWNgQlx11dsmFgAUUcAA/2142faed8db9c873af649983dc11605f/um-general-coin_cell_battery_-_safety_icons_-_safety_alert_icon.jpg",
+         "details": {
+          "Size": 111578,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "um-general-coin cell battery - safety icons - safety alert icon.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "2uOroGSYJqWlAoqAMRfSK1",
+     "type": "block",
+     "title": null,
+     "titleEmphasis": false,
+     "hash": null,
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p><strong>BATTERY AND BATTERY CHARGER</strong></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      },
+      {
+       "noticeType": "ansi-instructions",
+       "content": "<p>Lithium ion batteries are hazardous. Any failure to follow these safety instructions could damage the battery or charger which could cause fire, chemical burns, electrolyte leaks, and/or could lead to serious and/or fatal injuries. If the battery explodes, immediately call the fire department, cautiously remove any other batteries if possible, evacuate all persons from immediate area of fire, and use cold water to put out the fire. </p><p>1. Use only the SRAM-supplied charger for SRAM rechargeable batteries.  Use of other chargers may cause the battery to overheat, catch fire, and/or explode.  Review the User Manual for cord, charging port, and/or charging adapter specifications for use with your charger. Do not force discharge, recharge (coin batteries), disassemble, heat above manufacturer’s specified temperature rating, or incinerate your batteries. Doing so may result in injury due to venting, leakage or explosion resulting in chemical burns.</p><p>2. Replace rechargeable batteries with genuine SRAM rechargeable batteries only. Non-rechargeable batteries are not to be recharged. </p><p>3. Replace coin cell batteries used in SRAM components with a CR2032 or CR1632 battery only as defined in the user manual or on the product. Batteries must be 3V only. Ensure the batteries are installed correctly according to polarity (+ and -). Do not mix old and new batteries, different brands or types of batteries, such as alkaline, carbon-zinc, or rechargeable batteries.</p><p>4. Remove and immediately recycle or dispose of used batteries according to local regulations and keep away from children. Do NOT dispose of batteries in household trash or incinerate. Remove and immediately recycle or dispose of batteries from equipment not used for an extended period of time according to local regulations.</p><p>5. Do not use the battery outside of the temperature range specified in the user manual; avoid exposure to excessive heat or cold. Do not leave the battery in direct sunlight or in a vehicle.  </p><p>6. Do not place the battery or charger in or near fire or in a place where static electricity occurs.</p><p>7. Do not modify or disassemble the battery or charger. Avoid dropping your battery or charger. Do not use a battery or charger that has been dropped or is damaged. Signs of damage include: discoloration, dents, cracks, punctures, or leakage.</p><p>8. Do not charge the battery in a damp or wet location. Avoid exposure to moisture and/or water during charging. For parts with a plug, do not insert or remove the plug while it is wet; otherwise it may cause electric shock. Make sure the plug is dry before inserting it.</p><p>9. Do not leave the battery in a charger or on equipment if it generates an odor and/or heat, changes color and/or shape, leaks electrolyte, or causes any other abnormality. If you notice any abnormalities, immediately remove the battery from the charger or equipment.  </p><p>10. Do not leave a charging battery unattended. Do not leave the battery connected to the charger after charging is complete. Store the battery at room temperature with the battery cover on, if provided.</p><p>11. Do not allow metal, such as paper clips, coins, or keys, to come into contact with the battery terminals. Metal can damage the battery terminals and cause the battery to short-circuit.</p><p>12. Always completely secure the battery compartment. If the battery compartment does not close securely, stop using the product, remove the batteries, and keep them away from children.</p>",
+       "type": "notice",
+       "title": "Safety Instructions"
+      },
+      {
+       "noticeType": "ansi-warning",
+       "content": "<p>Keep new and used batteries out of reach of children at all times. Batteries can be a choking hazard, and if swallowed can cause internal chemical burns in as little as two hours and lead to death. If you think batteries might have been swallowed or placed inside any part of the body, seek immediate medical attention. Even used batteries may cause severe injury or death. Call a local poison control center for treatment information.</p>",
+       "type": "notice",
+       "title": "Warning"
+      },
+      {
+       "noticeType": "ansi-warning",
+       "content": "<p><strong>SKIN IRRITANT</strong></p><p>Under extreme usage or temperature conditions, battery leakage may occur. Do not allow leaked electrolyte to come into contact with eyes or skin. Immediately wash the affected area with clean water and seek medical advice.</p>",
+       "type": "notice",
+       "title": "Warning"
+      },
+      {
+       "noticeType": "ansi-notice",
+       "content": "<p>Hands and gloves must be clean before handling the SRAM battery. Contact with sunscreen or hydrocarbon cleaners may cause the battery to crack.</p>",
+       "type": "notice",
+       "title": "Notice"
+      },
+      {
+       "step": "notastep",
+       "content": "<hr><p></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "5vWncczXPYB74V1jaTjLBN",
+   "title": "How to Use this Manual",
+   "hash": "how-to-use-this-manual",
+   "filters": [],
+   "children": [
+    {
+     "id": "5ipeco47kM6cuuQuWeH5i9",
+     "type": "block",
+     "title": null,
+     "titleEmphasis": false,
+     "hash": null,
+     "filters": [],
+     "content": [
+      {
+       "noticeType": "ansi-notice",
+       "content": "<p>This manual is a complete system installation guide, from installing each component to heading out for a ride. Complete the installation and setup in the order described in the manual. Do not begin a new section before completing the previous sections.</p><p>Your product&#39;s appearance may differ from the images contained in this publication.</p><p>AXS components are only compatible with other AXS components. Consult the <a href=\"https://www.sram.com/globalassets/document-hierarchy/compatibility-map/road/axs-components-compatibility-map.pdf\" title=\"\">AXS Component Compatibility Map</a> for compatibility information.</p><p>Consult <a href=\"https://www.sram.com/service\" title=\"\">www.sram.com/service</a> whenever a separate manual is referenced in this document.</p>",
+       "type": "notice",
+       "title": "Notice"
+      }
+     ]
+    },
+    {
+     "id": "4kDE89uUdlDCeS3DiG8WIA",
+     "type": "block",
+     "title": "Legend and Tools",
+     "titleEmphasis": false,
+     "hash": "legend-and-tools",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p>Click on the icon at the top right corner of the screen to display the color legend and the complete list of tools and supplies for this manual in a scrollable dropdown list.</p><p>The colors and symbols featured in this manual correspond to specific actions or procedures. A detailed description for each color and symbol is contained in the dropdown.</p>",
+       "images": [
+        {
+         "imageName": "IMG-UM-GENERIC-HOW TO USE THIS MANUAL-LEGEND AND TOOLS DROPDOWN 2",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": true,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/6QQ4ym0mBaGAwPAonL0sor/c0827ced8900a323c71a19ada6e83597/IMG-UM-GENERIC-HOW_TO_USE_THIS_MANUAL-LEGEND_AND_TOOLS_DROPDOWN.jpg",
+         "details": {
+          "Size": 160129,
+          "Image": {
+           "Height": 497,
+           "Width": 1834
+          }
+         },
+         "width": 1834,
+         "height": 497,
+         "fileName": "IMG-UM-GENERIC-HOW_TO_USE_THIS_MANUAL-LEGEND_AND_TOOLS_DROPDOWN.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "6U1A1adurudaNE6vAPQ3O6",
+     "type": "block",
+     "title": "How to Use Filters",
+     "titleEmphasis": false,
+     "hash": "how-to-use-filters",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p>Use the dropdown lists in the <strong>SELECT FILTERS:</strong> window at the top left of the page to select the preferred language, product model code, and instructional content. Product instructional content filters will vary.</p><p><strong>Language Filter:</strong> Select Language first. When a new language is selected, all other selected filters will reset.</p><p><strong>All non-Language Filters:</strong> To reset a non-language filter, click on the X. </p>",
+       "images": [
+        {
+         "imageName": "img-howtousethismanual-filters",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/4f7rvXAWC0lB8AWGTN2ZgZ/012d89872a7f1f4893c7d0adaafd49b7/img-howtousethismanual-filters.jpg",
+         "details": {
+          "Size": 155804,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "img-howtousethismanual-filters.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "img-howtousethismanual-filters-models",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/5kN9pKNEgNZHhF0lnB0yF4/0fc05b29dfd01356761687f8bee44d46/img-howtousethismanual-filters-models.jpg",
+         "details": {
+          "Size": 169303,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "img-howtousethismanual-filters-models.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "img-howtousethismanual-filters clear",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/3VPmhFF3iz8pdGHcNuSHU/c8f499a6a7c6ff515a7a90cb42c65ea7/img-howtousethismanual-filters_clear.jpg",
+         "details": {
+          "Size": 99388,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "img-howtousethismanual-filters clear.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "3qZoiorHSX7zIbrnbCLa4O",
+     "type": "block",
+     "title": "Model Code Identification",
+     "titleEmphasis": false,
+     "hash": "model-code-identification",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p>Product model code and specification details can be identified with the serial number on the product. Model codes can be used to identify the product type, series name, model name, and product version associated with the production model year. Product details can be used to identify spare parts, service kit, and lubricant compatibility.</p><p>Model Code example: <strong>RD-RED-E-E1</strong></p><p><strong>RD </strong>= Product Type - <strong>Rear Derailleur</strong></p><p><strong>RED </strong>= Platform/Series - <strong>RED</strong></p><p><strong>E</strong><strong>1 </strong>= Version - (<strong>E</strong> - Fifth generation, <strong>1</strong> - first iteration)</p><p>To identify the model code, locate the serial number on the product and enter it into the Search by Model Name or Serial Number field at <a href=\"https://www.sram.com/service\" class=\"s-hyperLink\">www.sram.com/service</a>.</p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "75wr1Yx3TLztfQwMHnUurc",
+     "type": "block",
+     "title": "Product Appearance May Vary",
+     "titleEmphasis": false,
+     "hash": "product-appearance-may-vary",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p>Your product&#39;s appearance may vary from those pictured in this manual. </p><p>Images and examples pictured are for conceptual purposes and may vary from product design, appearance, and performance.</p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "4jcx3dmuZcjkjHsWdjUda1",
+     "type": "block",
+     "title": "Warranty and Trademark",
+     "titleEmphasis": false,
+     "hash": "warranty-and-trademark",
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p>Consult <a href=\"https://www.sram.com/service\" class=\"s-hyperLink\">sram.com/service</a> whenever a separate manual is referenced in this document.</p><p>Read the full warranty policy for your components at <a href=\"https://www.sram.com/en/service/warranty\" class=\"s-hyperLink\">sram.com/en/service/warranty</a>.</p><p>For information about trademarks used in this manual, visit <a href=\"https://www.sram.com/website-terms-of-use\" class=\"s-hyperLink\">sram.com/website-terms-of-use</a>.\n\n</p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "SRK1xOFkzLAKPARdkf75P",
+     "type": "block",
+     "title": null,
+     "titleEmphasis": false,
+     "hash": null,
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<hr><p></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "570G6axqCNDnEJEvfssaGz",
+   "title": "Cassette Installation",
+   "hash": "cassette-installation",
+   "filters": [],
+   "children": [
+    {
+     "id": "5FHSn7oSsoJuIeOGlBxRzf",
+     "type": "block",
+     "title": "Cassette Installation - XDR",
+     "titleEmphasis": false,
+     "hash": "cassette-installation-xdr",
+     "filters": [
+      {
+       "key": "procedure",
+       "values": [
+        "installation-axs"
+       ]
+      }
+     ],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<p><figure class=\"s-notice s-notice-notice\"><figcaption class=\"s-notice-header s-notice-header-centered\">Notice</figcaption><div class=\"s-notice-content\"><p>Cassette lockring tool splines must fully engage the cassette locktube. Splines must be a minimum of 7 mm in length for XDR cassettes. Use a tool with a guide pin to prevent damage to the components.\r</p><p>If there is lateral play or movement in the cassette after tightening it, contact your SRAM dealer.</p></div></figure></p>",
+       "images": [
+        {
+         "imageName": "UM - eTap AXS - Cassette Installation",
+         "caption1": "Cassette Lockring Tool with Pin",
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/5HLMmjDeLDw5u8UXcTUWfe/ee985473f938da2a5f43d034ae588f6b/lockring_tool_wPin_black.jpg",
+         "details": {
+          "Size": 91903,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "lockring tool wPin_black.jpg",
+         "contentType": "image/jpeg",
+         "alt": "Cassette Tool",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      },
+      {
+       "step": "notastep",
+       "content": "<p><strong>1.</strong>&#160;Clean the driver body and apply grease to the driver body threads.</p><p><strong>2</strong>. Install the cassette onto the driver body until it is fully seated and the splines are engaged. Use a tool with a guide pin to tighten the cassette while applying inward pressure to the cassette.</p><p><strong>3.</strong>&#160;Use a torque wrench to tighten the cassette.<figure class=\"s-notice s-notice-notice\"><figcaption class=\"s-notice-header s-notice-header-centered\">Notice</figcaption><div class=\"s-notice-content\"><p>Grease is critical to prevent the cassette from seizing onto the driver body. Make sure the hub\ndriver body and cassette interface are free of dirt and debris.</p><p>If the cassette becomes difficult to rotate after a few turns, the cassette may be cross-threaded. Loosen the cassette and re-thread it onto the driver body.</p><p>SRAM XDR cassettes are compatible only with the SRAM XDR driver body standard.</p></div></figure></p>",
+       "images": [
+        {
+         "imageName": "UM - eTap AXS - Cassette Installation 1",
+         "caption1": null,
+         "caption1color": "black",
+         "caption2": null,
+         "caption2color": "black",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/2PrWBLxtNokWqD6cOdUp87/6e6cdfa68ca9947a397b497ee82569c1/Grease_driver_body_threads.jpg",
+         "details": {
+          "Size": 200094,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "Grease driver body threads.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "UM - eTap AXS - Cassette Installation 2",
+         "caption1": null,
+         "caption1color": null,
+         "caption2": null,
+         "caption2color": null,
+         "caption3": null,
+         "caption3color": null,
+         "fullWidthImage": null,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/62FwnAnOk1Kjcu9w1umuQc/e692dacdb4fbf9d327e2d9b4e211752d/cassette_installed.jpg",
+         "details": {
+          "Size": 310038,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "cassette installed.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        },
+        {
+         "imageName": "UM - eTap AXS - Cassette Installation 3",
+         "caption1": "Cassette Lockring Tool",
+         "caption1color": "black",
+         "caption2": "40 N·m (354 In-lb)",
+         "caption2color": "red",
+         "caption3": null,
+         "caption3color": "black",
+         "fullWidthImage": false,
+         "url": "https://images.ctfassets.net/enhz2tloa31p/7zAa1QhCMbbOWPv82ELACv/0bf9afe494132a297224162565bc54ca/cassette_torqued.jpg",
+         "details": {
+          "Size": 215872,
+          "Image": {
+           "Height": 600,
+           "Width": 900
+          }
+         },
+         "width": 900,
+         "height": 600,
+         "fileName": "cassette torqued.jpg",
+         "contentType": "image/jpeg",
+         "alt": "",
+         "type": "image",
+         "title": null
+        }
+       ],
+       "type": "text",
+       "title": null
+      }
+     ]
+    },
+    {
+     "id": "SRK1xOFkzLAKPARdkf75P",
+     "type": "block",
+     "title": null,
+     "titleEmphasis": false,
+     "hash": null,
+     "filters": [],
+     "content": [
+      {
+       "step": "notastep",
+       "content": "<hr><p></p>",
+       "images": null,
+       "type": "text",
+       "title": null
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "id": "6TmfV97fHWv8kvGXVegoTy"
+}

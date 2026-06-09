@@ -125,12 +125,23 @@ class TestSourceAgnosticTypes:
         c = HtmlChunk(
             ordinal=1,
             text="Crank arm bolts 40 N·m (354 in-lb)",
-            anchor="abc123",
-            parent_anchor="mod9",
             source_url="https://docs.sram.com/en-US/publications/X#abc123",
         )
         p = ParsedPublication(title="Road AXS", chunks=(c,))
-        assert p.chunks[0].anchor == "abc123"
+        assert p.chunks[0].anchor is None
+        assert p.chunks[0].parent_anchor is None
+
+    def test_html_chunk_ordinal_zero_rejected(self) -> None:
+        from parts_lookup.domain.models import HtmlChunk
+
+        with pytest.raises(ValidationError):
+            HtmlChunk(ordinal=0, text="x", source_url="https://example.test")
+
+    def test_html_chunk_empty_text_rejected(self) -> None:
+        from parts_lookup.domain.models import HtmlChunk
+
+        with pytest.raises(ValidationError):
+            HtmlChunk(ordinal=1, text="", source_url="https://example.test")
 
     def test_retrieved_chunk_pdf_shape(self) -> None:
         from parts_lookup.domain.models import RetrievalSource, RetrievedChunk, SourceType
