@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 
 # --- #16: sitemap English selection (pure) ---
@@ -69,10 +70,11 @@ async def test_robots_blocks_disallowed(tmp_path):
         client=_robots_client("User-agent: *\nDisallow: /blocked"),
     )
     assert await f.get("https://example.com/allowed") == "PAGE"
-    import pytest
-
     with pytest.raises(DiscoveryError):
         await f.get("https://example.com/blocked/x")
+    # The blocked URL must not have been written to the disk cache (only the
+    # one allowed page should be cached; robots.txt is not disk-cached).
+    assert len(list(tmp_path.glob("*.txt"))) == 1
     await f.aclose()
 
 

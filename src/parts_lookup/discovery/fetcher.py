@@ -41,6 +41,7 @@ class Fetcher:
         self._force_refresh = force_refresh
         self._respect_robots = respect_robots
         self._robots: dict[str, RobotFileParser] = {}
+        self._robots_lock = asyncio.Lock()
         self._sem = asyncio.Semaphore(max_concurrency)
         self._client = client or httpx.AsyncClient(
             headers={"User-Agent": user_agent},
@@ -59,16 +60,22 @@ class Fetcher:
         matching common crawler behaviour when robots.txt is absent.
         """
         rp = self._robots.get(origin)
-        if rp is None:
-            rp = RobotFileParser()
-            try:
-                resp = await self._client.get(
-                    f"{origin}/robots.txt", headers={"User-Agent": self._ua}
-                )
-                rp.parse(resp.text.splitlines() if resp.status_code == 200 else [])
-            except httpx.HTTPError:
-                rp.parse([])
-            self._robots[origin] = rp
+        if rp is not None:
+            return rp
+        # Serialize so concurrent first-requests to one origin fetch robots.txt
+        # only once (double-checked under the lock).
+        async with self._robots_lock:
+            rp = self._robots.get(origin)
+            if rp is None:
+                rp = RobotFileParser()
+                try:
+                    resp = await self._client.get(
+                        f"{origin}/robots.txt", headers={"User-Agent": self._ua}
+                    )
+                    rp.parse(resp.text.splitlines() if resp.status_code == 200 else [])
+                except httpx.HTTPError:
+                    rp.parse([])
+                self._robots[origin] = rp
         return rp
 
     async def _allowed(self, url: str) -> bool:
