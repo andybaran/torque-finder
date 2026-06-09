@@ -119,6 +119,11 @@ One alembic migration adds:
 Unique constraint on `pub_id`. Upsert semantics: insert on first sight; on re-crawl update
 `last_seen_at`, and if `content_hash` changed set `status = stale` (signals "re-ingest later").
 
+**Timestamp type:** `discovered_at`/`last_seen_at` are `timestamptz` (timezone-aware UTC
+instants — the correct type for "when did this happen"). Note this deviates from the existing
+`pdfs`/`pages` `created_at` columns, which use naive `timestamp`; aligning those is tracked in
+GitHub issue #1.
+
 ## 6. Data flow
 
 ### First run (Red AXS seed)
