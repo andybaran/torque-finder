@@ -105,7 +105,7 @@ async def _ingest_one(pipeline: IngestionPipeline, pdf_path: Path) -> int:
         cause = f" (cause: {exc.__cause__!r})" if exc.__cause__ else ""
         print(f"FAIL {pdf_path}: {exc}{cause}", file=sys.stderr)
         return 1
-    print(f"OK   {pdf_path} -> id={doc.id} sha256={doc.sha256[:12]}… pages={doc.page_count}")
+    print(f"OK   {pdf_path} -> document id={doc.id} ref={doc.source_ref[:12]}…")
     return 0
 
 
