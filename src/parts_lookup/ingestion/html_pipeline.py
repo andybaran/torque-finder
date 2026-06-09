@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from parts_lookup.domain.errors import IngestionError
+from parts_lookup.domain.errors import DiscoveryError, IngestionError
 from parts_lookup.domain.models import (
     IndexedDocument,
     RegisteredPublication,
@@ -42,7 +42,12 @@ class HtmlIngestionPipeline:
         self._embedder = embedder
 
     async def ingest_publication(self, pub: RegisteredPublication) -> IndexedDocument:
-        """Ingest one publication; returns the resulting document."""
+        """Ingest one publication; returns the resulting document.
+
+        Raises only :class:`IngestionError` — collaborator failures
+        (fetch, embed, registry status flip) are wrapped with the
+        original exception chained as ``__cause__``.
+        """
         try:
             html = await self._fetcher.get(pub.source_url)
         except Exception as exc:
@@ -83,5 +88,10 @@ class HtmlIngestionPipeline:
                 source_url=chunk.source_url,
             )
 
-        await self._registry.set_status(pub.pub_id, "ingested")
+        try:
+            await self._registry.set_status(pub.pub_id, "ingested")
+        except DiscoveryError as exc:
+            raise IngestionError(
+                f"status flip failed for publication {pub.pub_id}"
+            ) from exc
         return document

@@ -6,6 +6,8 @@ Subcommands:
 * ``parts-lookup ingest <pdf_path>`` — ingest a single PDF.
 * ``parts-lookup ingest-dir <dir>``  — ingest every ``*.pdf`` in a directory
   (non-recursive; sort by filename for deterministic order).
+* ``parts-lookup ingest-html [pub_id ...]`` — ingest HTML publications from
+  the discovery registry (omit ids to ingest every 'discovered'/'stale' one).
 """
 
 from __future__ import annotations
@@ -18,9 +20,12 @@ from pathlib import Path
 
 from parts_lookup.assets.r2_client import R2Client
 from parts_lookup.config import Settings, get_settings
+from parts_lookup.discovery.fetcher import Fetcher
+from parts_lookup.discovery.registry import PublicationRegistry
 from parts_lookup.domain.errors import IngestionError
 from parts_lookup.indexing.repository import Repository
 from parts_lookup.indexing.session import async_session_factory
+from parts_lookup.ingestion.html_pipeline import HtmlIngestionPipeline
 from parts_lookup.ingestion.pipeline import IngestionPipeline
 from parts_lookup.retrieval.embedder import VoyageEmbedder
 
@@ -33,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_run_ingest_one(Path(args.pdf_path)))
     if args.command == "ingest-dir":
         return asyncio.run(_run_ingest_dir(Path(args.directory)))
+    if args.command == "ingest-html":
+        return asyncio.run(_run_ingest_html(list(args.pub_ids)))
 
     parser.print_help()
     return 2
@@ -47,6 +54,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     ingest_dir = sub.add_parser("ingest-dir", help="Ingest every *.pdf in DIR.")
     ingest_dir.add_argument("directory", help="Directory containing PDFs.")
+
+    ingest_html = sub.add_parser(
+        "ingest-html",
+        help="Ingest HTML publications from the discovery registry.",
+    )
+    ingest_html.add_argument(
+        "pub_ids",
+        nargs="*",
+        default=[],
+        help="Publication ids; omit to ingest every 'discovered'/'stale' publication.",
+    )
 
     return parser
 
@@ -95,6 +113,61 @@ async def _run_ingest_dir(directory: Path) -> int:
                 file=sys.stderr,
             )
             rc = 1
+    return rc
+
+
+async def _run_ingest_html(pub_ids: list[str]) -> int:
+    """Ingest registered publications. One DB session per publication, like ingest-dir."""
+    settings = get_settings()
+    fetcher = Fetcher(
+        user_agent=settings.discovery_user_agent,
+        cache_dir=settings.discovery_cache_dir,
+        max_concurrency=settings.discovery_max_concurrency,
+        delay_seconds=settings.discovery_request_delay_seconds,
+        # Discovery may have cached this publication on disk (.cache/discovery);
+        # ingest must parse the live page, never a stale cached copy.
+        force_refresh=True,
+    )
+    factory = async_session_factory(settings)
+    rc = 0
+    try:
+        async with factory() as session:
+            registry = PublicationRegistry(session)
+            all_pubs = await registry.list_all()
+
+        if pub_ids:
+            wanted = set(pub_ids)
+            targets = [p for p in all_pubs if p.pub_id in wanted]
+            missing = wanted - {p.pub_id for p in targets}
+            if missing:
+                print(f"error: unknown pub_ids: {', '.join(sorted(missing))}", file=sys.stderr)
+                return 2
+        else:
+            targets = [p for p in all_pubs if p.status in ("discovered", "stale")]
+
+        if not targets:
+            print("warning: no publications to ingest", file=sys.stderr)
+            return 0
+
+        for pub in targets:
+            async with factory() as session:
+                pipeline = HtmlIngestionPipeline(
+                    repository=Repository(session),
+                    registry=PublicationRegistry(session),
+                    fetcher=fetcher,
+                    embedder=VoyageEmbedder(settings),
+                )
+                try:
+                    doc = await pipeline.ingest_publication(pub)
+                    await session.commit()
+                    print(f"OK   {pub.pub_id} -> document id={doc.id} title={doc.title!r}")
+                except IngestionError as exc:
+                    await session.rollback()
+                    cause = f" (cause: {exc.__cause__!r})" if exc.__cause__ else ""
+                    print(f"FAIL {pub.pub_id}: {exc}{cause}", file=sys.stderr)
+                    rc = 1
+    finally:
+        await fetcher.aclose()
     return rc
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy import DateTime, String, func, select
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -113,7 +114,9 @@ class PublicationRegistry:
         row = await self._get_row(pub_id)
         return _row_to_domain(row) if row is not None else None
 
-    async def set_status(self, pub_id: str, status: str) -> None:
+    async def set_status(
+        self, pub_id: str, status: Literal["discovered", "stale", "ingested"]
+    ) -> None:
         """Flip a publication's lifecycle status (e.g. 'discovered' → 'ingested')."""
         row = await self._get_row(pub_id)
         if row is None:

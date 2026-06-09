@@ -73,8 +73,9 @@ class FakeRepo:
             created_at=datetime(2026, 6, 9, tzinfo=UTC),
         )
 
-    async def delete_chunks(self, document_id: int) -> None:
+    async def delete_chunks(self, document_id: int) -> int:
         self.deleted_for.append(document_id)
+        return 0
 
     async def insert_chunk(self, **kwargs):  # type: ignore[no-untyped-def]
         self.inserted.append(kwargs)
@@ -137,6 +138,40 @@ async def test_publication_with_no_chunks_raises() -> None:
         '{"title": "x", "modules": []}</script></body></html>'
     )
     pipeline, repo, registry, _ = _pipeline(empty)
+    with pytest.raises(IngestionError):
+        await pipeline.ingest_publication(_PUB)
+    assert repo.inserted == []
+    assert registry.statuses == []
+
+
+async def test_fetch_failure_is_wrapped_in_ingestion_error() -> None:
+    class BoomFetcher:
+        async def get(self, url: str) -> str:
+            raise ConnectionError("network down")
+
+    pipeline = HtmlIngestionPipeline(
+        repository=FakeRepo(),
+        registry=FakeRegistry(),
+        fetcher=BoomFetcher(),
+        embedder=FakeEmbedder(),
+    )
+    with pytest.raises(IngestionError) as excinfo:
+        await pipeline.ingest_publication(_PUB)
+    assert isinstance(excinfo.value.__cause__, ConnectionError)
+
+
+async def test_embed_count_mismatch_raises_ingestion_error() -> None:
+    class ShortEmbedder:
+        async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0] * 1024]  # always one vector, regardless of input
+
+    repo, registry = FakeRepo(), FakeRegistry()
+    pipeline = HtmlIngestionPipeline(
+        repository=repo,
+        registry=registry,
+        fetcher=FakeFetcher(_HTML),
+        embedder=ShortEmbedder(),
+    )
     with pytest.raises(IngestionError):
         await pipeline.ingest_publication(_PUB)
     assert repo.inserted == []
