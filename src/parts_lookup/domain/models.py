@@ -123,18 +123,6 @@ class Query(_Frozen):
     top_k: int = Field(default=3, ge=1, le=10)
 
 
-class RetrievedPage(_Frozen):
-    """A retrieval hit. ``score`` is the fused score (higher = better)."""
-
-    pdf_id: int
-    pdf_filename: str
-    page_no: int
-    text: str
-    png_r2_key: str
-    score: float
-    source: RetrievalSource
-
-
 class Answer(_Frozen):
     """Structured extraction result from Claude.
 

@@ -31,6 +31,6 @@ def test_rrf_page_in_both_channels_wins() -> None:
     vector: list[tuple[int, float]] = [(2, 0.91), (3, 0.83)]
 
     fused = rrf(keyword, vector)
-    fused_ids = [hit.page_id for hit in fused]
+    fused_ids = [hit.chunk_id for hit in fused]
 
     assert fused_ids == [2, 1, 3]

@@ -17,7 +17,6 @@ from parts_lookup.domain.models import (
     Query,
     RetrievalSource,
     RetrievedChunk,
-    RetrievedPage,
     SourceType,
 )
 
@@ -36,6 +35,5 @@ __all__ = [
     "RetrievalError",
     "RetrievalSource",
     "RetrievedChunk",
-    "RetrievedPage",
     "SourceType",
 ]
