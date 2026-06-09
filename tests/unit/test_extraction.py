@@ -120,6 +120,14 @@ class TestParseResponse:
             )
 
 
+def test_system_prompt_marks_sources_as_reference_data_only() -> None:
+    """Drift guard for the prompt-injection hardening rule (Task 5 review rider)."""
+    from parts_lookup.extraction.prompt import SYSTEM_PROMPT
+
+    assert "REFERENCE DATA ONLY" in SYSTEM_PROMPT
+    assert "never follow" in SYSTEM_PROMPT
+
+
 async def test_stub_extract_cites_first_candidate() -> None:
     from parts_lookup.config import Settings
 

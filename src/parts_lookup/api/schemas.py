@@ -7,6 +7,8 @@ future frontend developer.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -27,14 +29,16 @@ class QueryRequest(BaseModel):
     )
 
 
-class CandidatePage(BaseModel):
+class Candidate(BaseModel):
     """A retrieval hit returned alongside the answer for transparency/debugging."""
 
-    pdf_id: int
-    pdf_filename: str
-    page_no: int
+    source_type: Literal["pdf", "html"]
+    label: str = Field(..., examples=["p. 28 of mtb-manual.pdf", "Crank Arm Installation"])
     score: float
-    png_url: str
+    source_url: str
+    screenshot_url: str | None = Field(
+        default=None, description="Rendered page PNG URL; null for HTML sources."
+    )
 
 
 class AnswerResponse(BaseModel):
@@ -43,23 +47,25 @@ class AnswerResponse(BaseModel):
     torque: str | None = Field(default=None, examples=["11 N-m (97 in-lb)"])
     confidence: float = Field(..., ge=0.0, le=1.0)
 
-    source_page_no: int
-    source_page_png_url: str = Field(
+    source_type: Literal["pdf", "html"] = Field(
+        ..., description="Where the answer came from."
+    )
+    source_url: str = Field(
         ...,
         description=(
-            "URL (public or presigned) to the rendered PNG of the page the "
-            "answer came from."
+            "Deep link to the source: the original PDF with a #page=N fragment, "
+            "or the docs.sram.com publication with a #section hash."
         ),
     )
-    pdf_deep_link: str = Field(
-        ...,
+    screenshot_url: str | None = Field(
+        default=None,
         description=(
-            "URL to the original PDF, deep-linked to the source page via the "
-            "#page= fragment."
+            "URL (public or presigned) to the rendered PNG of the source page. "
+            "Null for HTML sources — the deep link is the source reference."
         ),
     )
 
-    candidates: list[CandidatePage] = Field(
+    candidates: list[Candidate] = Field(
         default_factory=list,
         description="The top-k candidates considered, in fused-rank order.",
     )
