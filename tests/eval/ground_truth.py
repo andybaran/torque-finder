@@ -86,11 +86,9 @@ _ONE_X_MTB_B_ADJUST_PAGE = (ONE_X_MTB_MANUAL_SHA256, 10)
 REVERB_AXS_MANUAL_SHA256 = "10a56014858cecc8e108860827b7e54c54acb2fc0eaec3fdf61208729df76244"
 _REVERB_MMX_CLAMP_PAGE = (REVERB_AXS_MANUAL_SHA256, 28)
 
-# Placeholder for the GitHub issue tracking figure-page retrieval quality.
-# Replace #QUALITY with the real issue number once it is filed.
+# GitHub issue tracking figure-page retrieval quality (and related gaps).
 _FIGURE_PAGE_XFAIL = (
-    "figure-only pages lack heading vocabulary; tracked in GitHub issue "
-    "#QUALITY (number TBD)"
+    "figure-only pages lack heading vocabulary; tracked in GitHub issue #19"
 )
 
 
