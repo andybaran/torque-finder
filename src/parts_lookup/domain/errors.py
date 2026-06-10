@@ -7,10 +7,6 @@ class PartsLookupError(Exception):
     """Base class. Catch this in the API layer to translate to HTTP errors."""
 
 
-class PdfNotFoundError(PartsLookupError):
-    """A PDF was referenced (by id, sha256, or path) but does not exist."""
-
-
 class IngestionError(PartsLookupError):
     """Ingestion pipeline failed (parse, render, embed, or store)."""
 

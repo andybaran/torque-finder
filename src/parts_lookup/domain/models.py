@@ -92,30 +92,6 @@ class RetrievedChunk(_Frozen):
     source: RetrievalSource
 
 
-class PdfDocument(_Frozen):
-    """A manufacturer PDF that has been ingested."""
-
-    id: int
-    filename: str
-    sha256: str = Field(min_length=64, max_length=64)
-    r2_key: str
-    page_count: int = Field(gt=0)
-    created_at: datetime
-
-
-class PageContent(_Frozen):
-    """A single page's textual content + asset pointer.
-
-    ``png_r2_key`` is the storage key for the rendered page image; the assets
-    layer turns it into a URL.
-    """
-
-    pdf_id: int
-    page_no: int = Field(gt=0)
-    text: str
-    png_r2_key: str
-
-
 class Query(_Frozen):
     """A natural-language question from a mechanic."""
 

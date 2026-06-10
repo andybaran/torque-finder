@@ -51,9 +51,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="parts-lookup",
         version=__version__,
         description=(
-            "Natural-language lookup over manufacturer PDFs for bicycle-shop "
-            "mechanics. Returns a structured answer plus a screenshot URL "
-            "and a PDF deep-link."
+            "Natural-language lookup over manufacturer manuals (PDF and "
+            "digital/HTML) for bicycle-shop mechanics. Returns a structured "
+            "answer plus a source deep link, and a screenshot URL for PDF "
+            "sources."
         ),
         lifespan=_lifespan,
     )

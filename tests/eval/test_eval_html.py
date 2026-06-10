@@ -3,8 +3,6 @@ working docs.sram.com#hash deep link (spec §8). Opt-in: ``pytest -m eval``."""
 
 from __future__ import annotations
 
-import re
-
 import httpx
 import pytest
 
@@ -18,23 +16,16 @@ if _missing:
         allow_module_level=True,
     )
 
+# Shared with the smoke suite so there is exactly one deep-link pattern and one
+# (notation-normalizing) matcher across the eval gate.
+from tests.eval.test_eval_smoke import _DEEP_LINK_RE, _matches, run_query  # noqa: E402
+
 pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
-
-_DEEP_LINK_RE = re.compile(r"^https://docs\.sram\.com/.+#.+$")
-
-
-def _matches(actual: str | None, expected: str | None) -> bool:
-    if expected is None:
-        return True
-    if actual is None:
-        return False
-    return expected.lower() in actual.lower()
 
 
 @pytest.mark.parametrize("case", HTML_GROUND_TRUTH, ids=lambda c: c.case_id)
 async def test_html_ground_truth_case(case: HtmlGroundTruthCase) -> None:
     from parts_lookup.domain.models import SourceType
-    from tests.eval.test_eval_smoke import run_query
 
     _hits, answer, chosen = await run_query(case.query, top_k=5)
 
