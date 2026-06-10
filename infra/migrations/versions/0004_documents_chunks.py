@@ -4,8 +4,10 @@ Revision ID: 0004_documents_chunks
 Revises: 0003_timestamptz
 
 Unified source-agnostic store (spec §3). The copy is INSERT … SELECT (no row
-rewrites); the session timezone is pinned to UTC per the 0003 lesson (no
-AT TIME ZONE USING clauses anywhere). The GIN/HNSW indexes are built AFTER
+rewrites); the session timezone is pinned to UTC as a *defensive* measure —
+a timestamptz→timestamptz copy is timezone-independent, so the pin is not
+load-bearing here; it is kept per the 0003 lesson (where AT TIME ZONE USING
+clauses *did* depend on it). The GIN/HNSW indexes are built AFTER
 the bulk copy so the vector index is constructed in one pass instead of
 per-row. The legacy tables are NOT touched here — dropping them is a
 separate, eval-gated revision (spec §7).
@@ -80,6 +82,10 @@ def upgrade() -> None:
     )
 
     # --- set-based copy (pdf rows only exist today) ---
+    # ORDER BY f.id below is cosmetic (keeps new document ids in legacy pdf-id
+    # order for human diffing). Correctness does not depend on insert order:
+    # the chunks copy joins documents via source_ref, which is why that INSERT
+    # has no ORDER BY at all.
     op.execute(
         """
         INSERT INTO documents (source_type, title, source_url, source_ref, created_at)
