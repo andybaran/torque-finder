@@ -1,4 +1,4 @@
-"""Postgres full-text keyword search over the ``pages.tsvector`` column."""
+"""Postgres full-text keyword search over the ``chunks.tsv`` column."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from parts_lookup.domain.errors import RetrievalError
 _KEYWORD_SQL = text(
     """
     SELECT
-        p.id AS page_id,
-        ts_rank_cd(p.tsvector, plainto_tsquery('english', :q)) AS score
-    FROM pages AS p
-    WHERE p.tsvector @@ plainto_tsquery('english', :q)
+        c.id AS chunk_id,
+        ts_rank_cd(c.tsv, plainto_tsquery('english', :q)) AS score
+    FROM chunks AS c
+    WHERE c.tsv @@ plainto_tsquery('english', :q)
     ORDER BY score DESC
     LIMIT :top_k
     """
@@ -25,7 +25,7 @@ async def keyword_search(
     query_text: str,
     top_k: int,
 ) -> list[tuple[int, float]]:
-    """Return ``(page_id, ts_rank_cd_score)`` sorted by score descending."""
+    """Return ``(chunk_id, score)`` sorted by score descending."""
     try:
         result = await session.execute(
             _KEYWORD_SQL,
@@ -34,4 +34,4 @@ async def keyword_search(
     except Exception as exc:
         raise RetrievalError("Keyword search query failed") from exc
 
-    return [(int(row.page_id), float(row.score)) for row in result]
+    return [(int(row.chunk_id), float(row.score)) for row in result]

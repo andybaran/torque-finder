@@ -4,28 +4,30 @@ from parts_lookup.domain.errors import (
     ExtractionError,
     IngestionError,
     PartsLookupError,
-    PdfNotFoundError,
     RetrievalError,
 )
 from parts_lookup.domain.models import (
     Answer,
-    PageContent,
-    PdfDocument,
+    HtmlChunk,
+    IndexedDocument,
+    ParsedPublication,
     Query,
     RetrievalSource,
-    RetrievedPage,
+    RetrievedChunk,
+    SourceType,
 )
 
 __all__ = [
     "Answer",
     "ExtractionError",
+    "HtmlChunk",
+    "IndexedDocument",
     "IngestionError",
-    "PageContent",
+    "ParsedPublication",
     "PartsLookupError",
-    "PdfDocument",
-    "PdfNotFoundError",
     "Query",
     "RetrievalError",
     "RetrievalSource",
-    "RetrievedPage",
+    "RetrievedChunk",
+    "SourceType",
 ]

@@ -40,7 +40,7 @@ These are hard constraints set by the user — treat them as standing instructio
 - **Project tooling:** **uv** (Astral). One tool for Python-version management, virtualenvs, dependency install, lockfile, and script running. Uses `pyproject.toml` + `uv.lock`. Common commands: `uv sync` (install deps), `uv add <pkg>`, `uv run <cmd>`.
 - **API framework:** **FastAPI** + **Pydantic v2**. Async handlers so a single worker can serve concurrent Claude calls without blocking. Typed request/response models are the API contract — OpenAPI docs served at `/docs` for the future frontend.
 - **PDF processing:** **docling** (IBM Research, MIT) for text extraction, layout detection, and table-structure recognition at ingest time. **pypdfium2** (Apache-2.0) for rendering pages to PNG for screenshots and Claude vision input. docling is an **ingestion-only** dependency — runtime container on Railway does not import it. Ingestion runs offline (on your machine or a batch job), so docling's PyTorch/ML weight does not bloat the runtime.
-- **Indexing / search stack:** **Postgres with `pgvector`** on Railway's managed Postgres. Hybrid retrieval: Postgres full-text search (tsvector + BM25-ish ranking) combined with cosine-similarity vector search via pgvector, merged via reciprocal-rank fusion. Single store for page metadata, structured extracted specs, text index, and embeddings. Python access via SQLAlchemy 2.0 + asyncpg.
+- **Indexing / search stack:** **Postgres with `pgvector`** on Railway's managed Postgres. Hybrid retrieval: Postgres full-text search (tsvector + BM25-ish ranking) combined with cosine-similarity vector search via pgvector, merged via reciprocal-rank fusion. Single store for page metadata, structured extracted specs, text index, and embeddings. Python access via SQLAlchemy 2.0 + asyncpg. Unified `documents`/`chunks` store (PDF pages and HTML blocks); legacy `pdfs`/`pages` dropped by gated migration 0005.
 - **Embedding model:** **Voyage AI `voyage-3`** (1024 dims) via REST API, used at both ingest and query time. Cloud-API choice is deliberate: keeps PyTorch out of the Railway runtime container. Cost is trivial at this scale (~$3 one-time ingest, <$0.02/month steady state). `voyage-3-large` is the upgrade path if retrieval quality falls short on the ground-truth eval from `thoughts.md`.
 - **Object storage:** **Cloudflare R2** (S3-compatible, $0 egress). Stores original PDFs and rendered page PNGs. Accessed via `boto3` or `aiobotocore` with S3-compatible endpoint. Decouples durable file storage from the Railway compute container — Railway can redeploy without touching files. Served via custom domain or signed URLs to the frontend.
 - **Observability:** three-piece stack. **structlog** for structured JSON application logs (→ Railway stdout). **OpenTelemetry** with auto-instrumentation for FastAPI, HTTPX, and SQLAlchemy, plus manual spans around retrieval and Claude calls, exported to **Grafana Cloud** (user's existing account). **Sentry** free tier for unhandled-exception capture.
@@ -95,7 +95,9 @@ torque-finder/
 │   │   ├── docling_parser.py   # PDF → structured per-page text + tables
 │   │   ├── rasterizer.py       # pypdfium2 page → PNG, uploads to R2
 │   │   ├── pipeline.py         # orchestrates ingestion of one PDF
-│   │   └── cli.py              # `uv run parts-lookup ingest <path>`
+│   │   ├── html_parser.py      # manual-data JSON → block chunks
+│   │   ├── html_pipeline.py    # registry → fetch → embed → documents/chunks
+│   │   └── cli.py              # `uv run parts-lookup ingest <path>` / `ingest-html`
 │   ├── indexing/               # bounded context: Indexing
 │   │   └── repository.py       # SQLAlchemy models + write APIs
 │   ├── retrieval/              # bounded context: Retrieval
@@ -130,6 +132,8 @@ Every top-level folder under `src/parts_lookup/` is a bounded context. `domain/`
 
 `CLI accepts PDF path → upload original to R2 → docling parses structure → pypdfium2 renders each page to PNG → upload PNGs to R2 → for each page: Voyage embeds the text → insert page row (pdf_id, page_no, text, tsvector, embedding, png_url) into Postgres.`
 
+HTML publications: `uv run parts-lookup ingest-html` reads the `publications` registry, parses each publication's embedded manual-data JSON into block-level chunks, and writes `documents`/`chunks` (no PNGs — deep links via `#hash`).
+
 Run it locally (it needs the `ingestion` extra) — it writes to the **same Railway Postgres + R2** the deployed API reads, via the local `.env`:
 
 ```bash
@@ -142,7 +146,7 @@ uv run parts-lookup ingest-dir <dir>        # every *.pdf in DIR (non-recursive)
 
 ### Query (per request, on Railway)
 
-`POST /v1/query with NL question → Voyage embeds question → Postgres hybrid search (tsvector + pgvector, fused via RRF) returns top-3 pages → fetch the 3 page PNGs from R2 → send PNGs + question to Claude Sonnet → parse structured JSON answer → API returns {answer, source_page_png_url, pdf_deep_link, confidence}.`
+`POST /v1/query with NL question → Voyage embeds question → Postgres hybrid search over chunks (tsvector + pgvector, RRF) returns top-3 chunks (PDF pages and HTML blocks mixed) → PDF candidates: fetch page PNGs from R2 for Claude vision; HTML candidates: reconstruct the parent module text from sibling chunks for Claude text → parse structured JSON answer → API returns {answer, source_type, source_url, screenshot_url (pdf only), candidates}.`
 
 Every step is a span in the OTel trace — when something is slow or wrong, the waterfall in Grafana tells you which context owns the problem.
 

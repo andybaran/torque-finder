@@ -2,17 +2,15 @@
 
 Wires together the four downstream contexts (indexing, retrieval, assets,
 extraction) into the single end-to-end mechanic-facing flow described in
-CLAUDE.md.
+CLAUDE.md. Candidates are source-agnostic: PDF chunks go to Claude as page
+images; HTML chunks go as the parent module's text reconstructed from
+sibling chunks (small-to-big).
 """
 
 from __future__ import annotations
 
-import asyncio
-
 import httpx
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from parts_lookup.api.dependencies import (
     ExtractorDep,
@@ -20,17 +18,21 @@ from parts_lookup.api.dependencies import (
     RetrievalDep,
     SessionDep,
 )
-from parts_lookup.api.schemas import AnswerResponse, CandidatePage, QueryRequest
+from parts_lookup.api.schemas import AnswerResponse, Candidate, QueryRequest
 from parts_lookup.assets.r2_client import R2Client
 from parts_lookup.domain.errors import ExtractionError, RetrievalError
-from parts_lookup.domain.models import Query
+from parts_lookup.domain.models import Query, RetrievedChunk, SourceType
 from parts_lookup.extraction.claude_client import ExtractionCandidate
-from parts_lookup.indexing.repository import Pdf
+from parts_lookup.indexing.repository import Repository
+from parts_lookup.observability import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["query"])
 
 # Long-lived presigned URLs so a frontend can keep them on screen.
 _PRESIGN_TTL_SECONDS = 60 * 60
+_LABEL_MAX_CHARS = 80
 
 
 @router.post("/query", response_model=AnswerResponse)
@@ -54,21 +56,45 @@ async def query(
     if not retrieved:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No matching pages found in the index.",
+            detail="No matching content found in the index.",
         )
 
-    png_payloads = await asyncio.gather(
-        *(_fetch_png(r2, hit.png_r2_key) for hit in retrieved)
-    )
-
-    candidates = [
-        ExtractionCandidate(
-            pdf_id=hit.pdf_id,
-            page_no=hit.page_no,
-            png_bytes=png,
-        )
-        for hit, png in zip(retrieved, png_payloads, strict=True)
-    ]
+    repo = Repository(session)
+    candidates: list[ExtractionCandidate] = []
+    # Sequential on purpose: repo.fetch_module_text shares this route's single
+    # AsyncSession (no concurrent ops on one session), same constraint as hybrid.py.
+    for index, hit in enumerate(retrieved, start=1):
+        if hit.source_type is SourceType.PDF:
+            if hit.png_r2_key is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"PDF chunk {hit.chunk_id} is missing its page PNG key.",
+                )
+            try:
+                png = await _fetch_png(r2, hit.png_r2_key)
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Asset store fetch failed.",
+                ) from exc
+            candidates.append(
+                ExtractionCandidate(
+                    index=index,
+                    source_type=SourceType.PDF,
+                    label=_pdf_label(hit),
+                    png_bytes=png,
+                )
+            )
+        else:
+            module_text = await _module_text(repo, hit)
+            candidates.append(
+                ExtractionCandidate(
+                    index=index,
+                    source_type=SourceType.HTML,
+                    label=_html_label(module_text, hit),
+                    text=module_text,
+                )
+            )
 
     try:
         answer = await extractor.extract(body.question, candidates)
@@ -78,52 +104,79 @@ async def query(
             detail=f"Extraction failed: {exc}",
         ) from exc
 
-    # Find the retrieval hit Claude pointed at (fall back to top hit).
-    source_hit = next(
-        (
-            h
-            for h in retrieved
-            if h.pdf_id == answer.source_pdf_id and h.page_no == answer.source_page_no
-        ),
-        retrieved[0],
-    )
+    response_candidates: list[Candidate] = []
+    for hit, candidate in zip(retrieved, candidates, strict=True):
+        hit_source_url, hit_screenshot_url = await _source_links(r2, hit)
+        response_candidates.append(
+            Candidate(
+                source_type=hit.source_type.value,
+                label=candidate.label,
+                score=hit.score,
+                source_url=hit_source_url,
+                screenshot_url=hit_screenshot_url,
+            )
+        )
 
-    pdf_r2_key = await _lookup_pdf_r2_key(session, source_hit.pdf_id)
-    source_png_url = await _resolve_url(r2, source_hit.png_r2_key)
-    pdf_base_url = await _resolve_url(r2, pdf_r2_key)
-    pdf_deep_link = f"{pdf_base_url}#page={source_hit.page_no}"
-
-    candidate_urls = await asyncio.gather(
-        *(_resolve_url(r2, hit.png_r2_key) for hit in retrieved)
-    )
+    # The extractor guarantees source_index maps to a supplied candidate;
+    # reuse that candidate's already-built links rather than recomputing them.
+    chosen = retrieved[answer.source_index - 1]
+    chosen_candidate = response_candidates[answer.source_index - 1]
+    source_url = chosen_candidate.source_url
+    screenshot_url = chosen_candidate.screenshot_url
 
     return AnswerResponse(
         answer=answer.text,
         tool_size=answer.tool_size,
         torque=answer.torque,
         confidence=answer.confidence,
-        source_page_no=answer.source_page_no,
-        source_page_png_url=source_png_url,
-        pdf_deep_link=pdf_deep_link,
-        candidates=[
-            CandidatePage(
-                pdf_id=hit.pdf_id,
-                pdf_filename=hit.pdf_filename,
-                page_no=hit.page_no,
-                score=hit.score,
-                png_url=url,
-            )
-            for hit, url in zip(retrieved, candidate_urls, strict=True)
-        ],
+        source_type=chosen.source_type.value,
+        source_url=source_url,
+        screenshot_url=screenshot_url,
+        candidates=response_candidates,
     )
 
 
-async def _fetch_png(r2: R2Client, key: str) -> bytes:
-    """Read a PNG from R2 by key via a short-lived presigned GET URL.
+def _pdf_label(hit: RetrievedChunk) -> str:
+    return f"p. {hit.ordinal} of {hit.document_title}"
 
-    Routing reads through httpx keeps R2Client small (no extra get_object
-    surface) and means downloads benefit from httpx connection pooling.
+
+def _html_label(module_text: str, hit: RetrievedChunk) -> str:
+    """Module title = first line of the reconstructed module (the heading chunk)."""
+    first_line = module_text.strip().split("\n", 1)[0].strip()
+    label = first_line or hit.document_title
+    return label[:_LABEL_MAX_CHARS]
+
+
+async def _module_text(repo: Repository, hit: RetrievedChunk) -> str:
+    """Small-to-big: hand Claude the whole owning module, not just the hit block."""
+    if hit.parent_anchor is None:
+        return hit.text
+    text = await repo.fetch_module_text(hit.document_id, hit.parent_anchor)
+    if not text:
+        logger.warning(
+            "query.module_text_missing",
+            chunk_id=hit.chunk_id,
+            parent_anchor=hit.parent_anchor,
+        )
+        return hit.text
+    return text
+
+
+async def _source_links(r2: R2Client, hit: RetrievedChunk) -> tuple[str, str | None]:
+    """(source_url, screenshot_url) for one chunk.
+
+    HTML chunks already carry a complete docs.sram.com#hash deep link and have
+    no screenshot. PDF chunks store R2 *keys*; resolve them to URLs here.
     """
+    if hit.source_type is SourceType.HTML:
+        return hit.source_url, None
+    pdf_url = await _resolve_url(r2, hit.document_source_url)
+    screenshot = await _resolve_url(r2, hit.png_r2_key) if hit.png_r2_key else None
+    return f"{pdf_url}#page={hit.ordinal}", screenshot
+
+
+async def _fetch_png(r2: R2Client, key: str) -> bytes:
+    """Read a PNG from R2 by key via a short-lived presigned GET URL."""
     url = await r2.generate_presigned_url(key, expires_in=300)
     async with httpx.AsyncClient(timeout=30.0) as http:
         response = await http.get(url)
@@ -137,14 +190,3 @@ async def _resolve_url(r2: R2Client, key: str) -> str:
         return r2.public_url(key)
     except Exception:
         return await r2.generate_presigned_url(key, expires_in=_PRESIGN_TTL_SECONDS)
-
-
-async def _lookup_pdf_r2_key(session: AsyncSession, pdf_id: int) -> str:
-    result = await session.execute(select(Pdf.r2_key).where(Pdf.id == pdf_id))
-    r2_key = result.scalar_one_or_none()
-    if r2_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PDF {pdf_id} referenced by retrieval hit is missing its R2 key.",
-        )
-    return str(r2_key)

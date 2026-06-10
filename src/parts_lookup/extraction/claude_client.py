@@ -1,9 +1,10 @@
 """Anthropic Claude client for the extraction bounded context.
 
-Takes a query plus a small set of candidate page images, sends them to Claude
-with vision, and parses a structured ``Answer``. Prompt caching is applied to
-the system prompt so repeated queries (which all share the same prompt) only
-pay full input cost once per cache window.
+Takes a query plus a small set of candidate sources (PDF page images and/or
+HTML manual sections), sends them to Claude, and parses a structured
+``Answer``. Prompt caching is applied to the system prompt so repeated queries
+(which all share the same prompt) only pay full input cost once per cache
+window.
 """
 
 from __future__ import annotations
@@ -17,17 +18,24 @@ import anthropic
 
 from parts_lookup.config import Settings
 from parts_lookup.domain.errors import ExtractionError
-from parts_lookup.domain.models import Answer
+from parts_lookup.domain.models import Answer, SourceType
 from parts_lookup.extraction.prompt import SYSTEM_PROMPT
 
 
 @dataclass(frozen=True)
 class ExtractionCandidate:
-    """A single page image being considered as a possible answer source."""
+    """One numbered source being considered as a possible answer origin.
 
-    pdf_id: int
-    page_no: int
-    png_bytes: bytes
+    ``index`` is 1-based and is what Claude cites back as ``source_index``.
+    PDF candidates carry ``png_bytes`` (vision); HTML candidates carry
+    ``text`` — the parent module reconstructed from sibling chunks.
+    """
+
+    index: int
+    source_type: SourceType
+    label: str
+    png_bytes: bytes | None = None
+    text: str | None = None
 
 
 def _strip_json_fences(text: str) -> str:
@@ -44,7 +52,7 @@ def _strip_json_fences(text: str) -> str:
 
 
 class ClaudeExtractor:
-    """Sends candidate pages + a query to Claude and returns a parsed Answer."""
+    """Sends candidate sources + a query to Claude and returns a parsed Answer."""
 
     def __init__(
         self,
@@ -66,20 +74,19 @@ class ClaudeExtractor:
         candidates: list[ExtractionCandidate],
     ) -> Answer:
         if not candidates:
-            raise ExtractionError("extract() requires at least one candidate page")
+            raise ExtractionError("extract() requires at least one candidate source")
 
         if self._stub:
             top = candidates[0]
             return Answer(
                 text=(
-                    f"[STUB EXTRACTION] Top candidate is page {top.page_no} "
-                    f"of PDF {top.pdf_id}. Real Claude call skipped because "
+                    f"[STUB EXTRACTION] Top candidate is source {top.index} "
+                    f"({top.label}). Real Claude call skipped because "
                     "STUB_EXTERNAL_APIS=true."
                 ),
                 tool_size=None,
                 torque=None,
-                source_pdf_id=top.pdf_id,
-                source_page_no=top.page_no,
+                source_index=top.index,
                 confidence=0.5,
             )
 
@@ -111,33 +118,51 @@ class ClaudeExtractor:
     ) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = []
         for candidate in candidates:
-            encoded = base64.standard_b64encode(candidate.png_bytes).decode()
-            blocks.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": encoded,
-                    },
-                }
-            )
-            blocks.append(
-                {
-                    "type": "text",
-                    "text": (
-                        f"Above is page {candidate.page_no} of PDF "
-                        f"{candidate.pdf_id}."
-                    ),
-                }
-            )
+            if candidate.source_type is SourceType.PDF:
+                if candidate.png_bytes is None:
+                    raise ExtractionError(
+                        f"PDF candidate {candidate.index} is missing png_bytes"
+                    )
+                encoded = base64.standard_b64encode(candidate.png_bytes).decode()
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": encoded,
+                        },
+                    }
+                )
+                blocks.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Above is source {candidate.index}: {candidate.label}."
+                        ),
+                    }
+                )
+            else:
+                if candidate.text is None:
+                    raise ExtractionError(
+                        f"HTML candidate {candidate.index} is missing text"
+                    )
+                blocks.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Source {candidate.index}: {candidate.label}\n"
+                            f"---\n{candidate.text}\n---"
+                        ),
+                    }
+                )
 
         blocks.append(
             {
                 "type": "text",
                 "text": (
                     f"Question: {query}\n\n"
-                    "Answer the question using only these pages. "
+                    "Answer the question using only these sources. "
                     "Reply ONLY with JSON matching the schema."
                 ),
             }
@@ -177,32 +202,29 @@ class ClaudeExtractor:
 
         tool_size = payload.get("tool_size")
         torque = payload.get("torque")
-        raw_page = payload.get("source_page_no")
+        raw_index = payload.get("source_index")
 
         # Resolve which candidate the model pointed at — guarantees we never
-        # surface a page_no that wasn't actually in the request.
-        if raw_page is None:
-            # "Not found" path: the prompt tells Claude to return a null
-            # source_page_no (with low confidence + null specs) when the
-            # answer isn't on the supplied pages. Fall back to the top
-            # candidate so the response still carries a screenshot + deep
-            # link; the low confidence tells the caller it's a best guess.
+        # surface a source that wasn't actually in the request.
+        if raw_index is None:
+            # "Not found" path: fall back to the top candidate so the response
+            # still carries a deep link; low confidence flags it as best-guess.
             match = candidates[0]
         else:
             try:
-                source_page_no = int(raw_page)
+                source_index = int(raw_index)
             except (TypeError, ValueError) as exc:
                 raise ExtractionError(
                     "Claude response JSON did not match the expected schema"
                 ) from exc
             match = next(
-                (c for c in candidates if c.page_no == source_page_no),
+                (c for c in candidates if c.index == source_index),
                 None,
             )
             if match is None:
                 raise ExtractionError(
-                    f"Claude cited page_no={source_page_no}, which was not among "
-                    f"the supplied candidates"
+                    f"Claude cited source_index={source_index}, which was not "
+                    f"among the supplied candidates"
                 )
 
         try:
@@ -210,8 +232,7 @@ class ClaudeExtractor:
                 text=answer_text,
                 tool_size=tool_size if tool_size is None else str(tool_size),
                 torque=torque if torque is None else str(torque),
-                source_pdf_id=match.pdf_id,
-                source_page_no=match.page_no,
+                source_index=match.index,
                 confidence=confidence,
             )
         except (ValueError, TypeError) as exc:

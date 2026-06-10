@@ -1,8 +1,9 @@
 """Orchestrates ingestion of one PDF: hash, store, parse, render, embed, index.
 
-Idempotency rule: a PDF is identified by its SHA-256. If a row with the same
-hash already exists, the pipeline short-circuits and returns the existing
-``PdfDocument`` — re-running ingest is safe and cheap.
+Idempotency rule: a PDF is identified by its SHA-256 (``source_ref``). If a
+document with the same ``source_ref`` already exists, the pipeline
+short-circuits and returns the existing ``IndexedDocument`` — re-running
+ingest is safe and cheap.
 
 The pipeline owns no state of its own and never touches the DB or HTTP
 clients directly: every side effect goes through ``Repository``,
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from parts_lookup.domain.errors import IngestionError
-from parts_lookup.domain.models import PdfDocument
+from parts_lookup.domain.models import IndexedDocument, SourceType
 from parts_lookup.ingestion.docling_parser import ParsedPage, parse_pdf
 from parts_lookup.ingestion.rasterizer import render_pages
 
@@ -46,15 +47,15 @@ class IngestionPipeline:
         self._embedder = embedder
         self._render_dpi = render_dpi
 
-    async def ingest(self, pdf_path: Path) -> PdfDocument:
-        """Ingest one PDF. Returns the resulting (or pre-existing) ``PdfDocument``."""
+    async def ingest(self, pdf_path: Path) -> IndexedDocument:
+        """Ingest one PDF. Returns the resulting (or pre-existing) document."""
         path = Path(pdf_path)
         if not path.is_file():
             raise IngestionError(f"PDF not found: {path}")
 
         sha256 = await asyncio.to_thread(_sha256_file, path)
 
-        existing = await self._repo.get_pdf_by_sha256(sha256)
+        existing = await self._repo.get_document_by_source_ref(sha256)
         if existing is not None:
             return existing
 
@@ -73,13 +74,12 @@ class IngestionPipeline:
             raise IngestionError(f"no pages parsed from {path}")
 
         text_by_page: dict[int, str] = {p.page_no: p.text for p in parsed_pages}
-        page_count = max(text_by_page)
 
-        pdf_doc = await self._repo.upsert_pdf(
-            filename=path.name,
-            sha256=sha256,
-            r2_key=pdf_key,
-            page_count=page_count,
+        document = await self._repo.upsert_document(
+            source_type=SourceType.PDF,
+            title=path.name,
+            source_url=pdf_key,  # R2 key; the API resolves it to a URL
+            source_ref=sha256,
         )
 
         # Embed all extracted page text. embed_documents() splits the inputs
@@ -101,20 +101,22 @@ class IngestionPipeline:
 
         await self._render_and_persist(
             path=path,
-            pdf_doc=pdf_doc,
+            document=document,
             sha256=sha256,
+            pdf_key=pdf_key,
             text_by_page=text_by_page,
             embedding_by_page=embedding_by_page,
         )
 
-        return pdf_doc
+        return document
 
     async def _render_and_persist(
         self,
         *,
         path: Path,
-        pdf_doc: PdfDocument,
+        document: IndexedDocument,
         sha256: str,
+        pdf_key: str,
         text_by_page: dict[int, str],
         embedding_by_page: dict[int, list[float]],
     ) -> None:
@@ -151,12 +153,13 @@ class IngestionPipeline:
 
             png_key = f"pages/{sha256}/{page_no:04d}.png"
             await self._r2.upload_bytes(png_key, png_bytes, "image/png")
-            await self._repo.insert_page(
-                pdf_id=pdf_doc.id,
-                page_no=page_no,
+            await self._repo.insert_chunk(
+                document_id=document.id,
+                ordinal=page_no,
                 text=text,
                 embedding=embedding,
                 png_r2_key=png_key,
+                source_url=f"{pdf_key}#page={page_no}",
             )
 
 

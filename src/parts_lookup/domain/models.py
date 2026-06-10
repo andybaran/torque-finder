@@ -28,28 +28,68 @@ class RetrievalSource(StrEnum):
     HYBRID = "hybrid"
 
 
-class PdfDocument(_Frozen):
-    """A manufacturer PDF that has been ingested."""
+class SourceType(StrEnum):
+    """Where indexed content came from: a manufacturer PDF or a digital (HTML) manual."""
+
+    PDF = "pdf"
+    HTML = "html"
+
+
+class IndexedDocument(_Frozen):
+    """A source document in the unified store (one PDF or one HTML publication).
+
+    ``source_ref`` is the stable dedupe key: the PDF's sha256 or the
+    publication's pub_id. For PDFs, ``source_url`` holds the R2 object key of
+    the original file (the API resolves it to a public/presigned URL); for
+    HTML it is the docs.sram.com publication URL.
+    """
 
     id: int
-    filename: str
-    sha256: str = Field(min_length=64, max_length=64)
-    r2_key: str
-    page_count: int = Field(gt=0)
+    source_type: SourceType
+    title: str
+    source_url: str
+    source_ref: str
     created_at: datetime
 
 
-class PageContent(_Frozen):
-    """A single page's textual content + asset pointer.
+class HtmlChunk(_Frozen):
+    """One block-level chunk parsed from a publication's manual-data JSON.
 
-    ``png_r2_key`` is the storage key for the rendered page image; the assets
-    layer turns it into a URL.
+    ``anchor`` is the block's own #hash (not every block has one);
+    ``parent_anchor`` is the owning module's #hash. ``source_url`` already
+    resolves to the most precise hash available.
     """
 
-    pdf_id: int
-    page_no: int = Field(gt=0)
+    ordinal: int = Field(gt=0)
+    text: str = Field(min_length=1)
+    anchor: str | None = None
+    parent_anchor: str | None = None
+    source_url: str
+
+
+class ParsedPublication(_Frozen):
+    """Pure parser output for one publication: title + ordered chunks."""
+
+    title: str
+    chunks: tuple[HtmlChunk, ...]
+
+
+class RetrievedChunk(_Frozen):
+    """A retrieval hit from the unified chunks index. ``score`` is the fused score."""
+
+    chunk_id: int
+    document_id: int
+    source_type: SourceType
+    document_title: str
+    document_source_url: str
+    ordinal: int
     text: str
-    png_r2_key: str
+    png_r2_key: str | None
+    anchor: str | None
+    parent_anchor: str | None
+    source_url: str
+    score: float
+    source: RetrievalSource
 
 
 class Query(_Frozen):
@@ -59,32 +99,18 @@ class Query(_Frozen):
     top_k: int = Field(default=3, ge=1, le=10)
 
 
-class RetrievedPage(_Frozen):
-    """A retrieval hit. ``score`` is the fused score (higher = better)."""
-
-    pdf_id: int
-    pdf_filename: str
-    page_no: int
-    text: str
-    png_r2_key: str
-    score: float
-    source: RetrievalSource
-
-
 class Answer(_Frozen):
     """Structured extraction result from Claude.
 
-    The optional fields are typed loosely on purpose: tool sizes vary
-    ("5mm hex", "T25 Torx", "7-8mm"), and torque values come in multiple units
-    ("11 N-m (97 in-lb)"). We surface the raw strings the model produced and
-    let the API layer present them.
+    ``source_index`` is the 1-based index of the candidate (in the order they
+    were supplied to the extractor) the model cited — the caller maps it back
+    to the retrieval hit. Tool/torque strings preserve the manual's notation.
     """
 
     text: str
     tool_size: str | None = None
     torque: str | None = None
-    source_pdf_id: int
-    source_page_no: int
+    source_index: int = Field(ge=1)
     confidence: float = Field(ge=0.0, le=1.0)
 
 

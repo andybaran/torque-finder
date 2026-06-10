@@ -24,13 +24,13 @@ def _import_rrf():  # type: ignore[no-untyped-def]
     pytest.skip("No RRF helper exposed on parts_lookup.retrieval.hybrid; helper is inlined")
 
 
-def test_rrf_page_in_both_channels_wins() -> None:
+def test_rrf_chunk_in_both_channels_wins() -> None:
     rrf = _import_rrf()
 
     keyword: list[tuple[int, float]] = [(1, 9.5), (2, 4.2)]
     vector: list[tuple[int, float]] = [(2, 0.91), (3, 0.83)]
 
     fused = rrf(keyword, vector)
-    fused_ids = [hit.page_id for hit in fused]
+    fused_ids = [hit.chunk_id for hit in fused]
 
     assert fused_ids == [2, 1, 3]

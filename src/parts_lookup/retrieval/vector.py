@@ -1,4 +1,4 @@
-"""pgvector cosine-similarity search over the ``pages.embedding`` column.
+"""pgvector cosine-similarity search over the ``chunks.embedding`` column.
 
 The HNSW index uses ``vector_cosine_ops``, so the ``<=>`` operator returns
 cosine *distance*. We convert to similarity (``1 - distance``) so higher
@@ -17,10 +17,10 @@ from parts_lookup.domain.errors import RetrievalError
 _VECTOR_SQL = text(
     """
     SELECT
-        p.id AS page_id,
-        1 - (p.embedding <=> :embedding) AS score
-    FROM pages AS p
-    ORDER BY p.embedding <=> :embedding
+        c.id AS chunk_id,
+        1 - (c.embedding <=> :embedding) AS score
+    FROM chunks AS c
+    ORDER BY c.embedding <=> :embedding
     LIMIT :top_k
     """
 ).bindparams(bindparam("embedding", type_=Vector()))
@@ -31,7 +31,7 @@ async def vector_search(
     query_embedding: list[float],
     top_k: int,
 ) -> list[tuple[int, float]]:
-    """Return ``(page_id, cosine_similarity)`` sorted by similarity descending."""
+    """Return ``(chunk_id, score)`` sorted by similarity descending."""
     try:
         result = await session.execute(
             _VECTOR_SQL,
@@ -40,4 +40,4 @@ async def vector_search(
     except Exception as exc:
         raise RetrievalError("Vector search query failed") from exc
 
-    return [(int(row.page_id), float(row.score)) for row in result]
+    return [(int(row.chunk_id), float(row.score)) for row in result]
