@@ -17,16 +17,15 @@ Each API response must include:
 
 The ground-truth examples in `thoughts.md` (pages 27, 28, 31, 50, 51 of `pdf.pdf`) are the canonical eval set — new retrieval/extraction work should be validated against them before anything else.
 
-Language: **Python**. The user is refamiliarizing with Python and wants to type the code themselves, so prefer explanation over code-dumps. Anthropic models are available for use; other infrastructure (vector DBs, OCR, etc.) can be acquired.
+Language: **Python**. Anthropic models are available for use; other infrastructure (vector DBs, OCR, etc.) can be acquired.
 
 ## Collaboration rules (from thoughts.md)
 
 These are hard constraints set by the user — treat them as standing instructions, not suggestions:
 
 1. **Three-alternatives rule.** Before adopting any new piece of infrastructure (vector DB, OCR tool, PDF parser, embedding model, framework, hosting, etc.), present **at least 3 alternatives** and interview the user on pros/cons before a decision is made. Do not silently pick one.
-2. **User types the code.** The user is relearning Python and will physically type implementation code. Favor explanations, diagrams, and small focused snippets over large generated files. Explain *why* a decision was made, not just *what* to write.
-3. **Fortune-100-grade practices.** Apply domain-driven design and patterns expected in enterprise software (clear bounded contexts, layering, typed interfaces, observability, testability) — even at small scale. Document the reasoning behind architectural choices.
-4. **API-first.** No frontend work in this repo. Design for a clean HTTP API surface the user's future frontend can call.
+2. **Fortune-100-grade practices.** Apply domain-driven design and patterns expected in enterprise software (clear bounded contexts, layering, typed interfaces, observability, testability) — even at small scale. Document the reasoning behind architectural choices.
+3. **API-first.** No frontend work in this repo. The frontend lives in the sibling repo `torque-finder-web`; this repo stays a clean HTTP API surface that the web client calls cross-origin (see the CORS allowlist under Decisions made). Keep that boundary — no frontend code here.
 
 ## Architecture notes
 
@@ -39,6 +38,7 @@ These are hard constraints set by the user — treat them as standing instructio
 - **Expected scale:** ~1,000 PDFs, ~10 mechanic queries/day initially.
 - **Project tooling:** **uv** (Astral). One tool for Python-version management, virtualenvs, dependency install, lockfile, and script running. Uses `pyproject.toml` + `uv.lock`. Common commands: `uv sync` (install deps), `uv add <pkg>`, `uv run <cmd>`.
 - **API framework:** **FastAPI** + **Pydantic v2**. Async handlers so a single worker can serve concurrent Claude calls without blocking. Typed request/response models are the API contract — OpenAPI docs served at `/docs` for the future frontend.
+- **CORS:** Starlette `CORSMiddleware` with an env-driven allowlist (`CORS_ALLOW_ORIGINS`, comma-separated; empty default = no cross-origin access). Lets the sibling `torque-finder-web` frontend call the API from the browser. `allow_credentials=False` for now (auth is out of scope; flip to `True` with an explicit non-`*` origin list once cookie auth lands).
 - **PDF processing:** **docling** (IBM Research, MIT) for text extraction, layout detection, and table-structure recognition at ingest time. **pypdfium2** (Apache-2.0) for rendering pages to PNG for screenshots and Claude vision input. docling is an **ingestion-only** dependency — runtime container on Railway does not import it. Ingestion runs offline (on your machine or a batch job), so docling's PyTorch/ML weight does not bloat the runtime.
 - **Indexing / search stack:** **Postgres with `pgvector`** on Railway's managed Postgres. Hybrid retrieval: Postgres full-text search (tsvector + BM25-ish ranking) combined with cosine-similarity vector search via pgvector, merged via reciprocal-rank fusion. Single store for page metadata, structured extracted specs, text index, and embeddings. Python access via SQLAlchemy 2.0 + asyncpg. Unified `documents`/`chunks` store (PDF pages and HTML blocks); legacy `pdfs`/`pages` dropped by gated migration 0005.
 - **Embedding model:** **Voyage AI `voyage-3`** (1024 dims) via REST API, used at both ingest and query time. Cloud-API choice is deliberate: keeps PyTorch out of the Railway runtime container. Cost is trivial at this scale (~$3 one-time ingest, <$0.02/month steady state). `voyage-3-large` is the upgrade path if retrieval quality falls short on the ground-truth eval from `thoughts.md`.
