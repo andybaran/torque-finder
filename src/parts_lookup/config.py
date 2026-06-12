@@ -9,10 +9,10 @@ and the tests trivial.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -30,6 +30,21 @@ class Settings(BaseSettings):
     # When true, VoyageEmbedder + ClaudeExtractor return deterministic
     # canned data instead of calling the real APIs. Local-smoke-test only.
     stub_external_apis: bool = False
+    # Browser origins allowed to call the API (CORS). Comma-separated in the
+    # env (CORS_ALLOW_ORIGINS); empty default = no cross-origin access.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _split_csv_origins(cls, v: object) -> object:
+        # NoDecode disables pydantic-settings' JSON pre-decode for this field, so the raw
+        # CORS_ALLOW_ORIGINS string reaches this validator. Split CSV -> list; pass an actual
+        # list through unchanged; None -> empty list. Default (unset env) stays [].
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        if v is None:
+            return []
+        return v
 
     # --- Anthropic ---
     anthropic_api_key: SecretStr = SecretStr("")
