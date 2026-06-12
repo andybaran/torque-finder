@@ -45,10 +45,7 @@ cp .env.example .env
 # Fill in API keys + DATABASE_URL
 
 # 3. Apply DB schema (creates pgvector extension + tables)
-# NOTE: against a shared/production DATABASE_URL, use the pinned revision from
-# scripts/start.sh instead of `head` — migration 0005 (drop of legacy tables)
-# is gated and must only run via docs/runbooks/2026-06-09-0005-drop-rollout.md.
-uv run alembic -c alembic.ini upgrade 0004_documents_chunks
+uv run alembic -c alembic.ini upgrade head
 ```
 
 ## Ingest a PDF
