@@ -12,8 +12,7 @@ An **API** that lets bicycle-shop mechanics look up component specifications (e.
 
 Each API response must include:
 - The answer (e.g., tool size, torque spec)
-- A **screenshot of the PDF region** the answer came from
-- A **link to the PDF**, ideally deep-linked to the specific page
+- A **citation of the source document** (always), with a **screenshot of the PDF region** and a **page deep-link (`#page=N`)** when the answer is pinned to a specific PDF page (the common case). When no exact page can be honestly pinned, the response falls back to an **interim best-effort document-level citation** (the original PDF, no `#page`, no screenshot) per #49. Returning the exact answer page reliably is a tracked later feature (Refs #49, #48): #48 measured the bottleneck as within-document page localization, and #49 turned retrieval document-level (leading-doc page coverage) as the first step toward it.
 
 The ground-truth examples in `thoughts.md` (pages 27, 28, 31, 50, 51 of `pdf.pdf`) are the canonical eval set — new retrieval/extraction work should be validated against them before anything else.
 
@@ -147,7 +146,7 @@ uv run parts-lookup ingest-dir <dir>        # every *.pdf in DIR (non-recursive)
 
 ### Query (per request, on Railway)
 
-`POST /v1/query with NL question → Voyage embeds question → Postgres hybrid search over chunks (tsvector + pgvector, RRF) returns top-3 chunks (PDF pages and HTML blocks mixed) → PDF candidates: fetch page PNGs from R2 for Claude vision; HTML candidates: reconstruct the parent module text from sibling chunks for Claude text → parse structured JSON answer → API returns {answer, source_type, source_url, screenshot_url (pdf only), candidates}.`
+`POST /v1/query with NL question → Voyage embeds question → Postgres hybrid search over chunks (tsvector + pgvector, RRF) → #29 title rerank + #28 product boost → #49 doc-level aggregation picks the leading document → that doc's pages (base winners + #30 neighbor expansion) are sent to Claude, capped by the page budget (`retrieval_max_candidates`, default 10) → PDF candidates: fetch page PNGs from R2 for Claude vision; HTML candidates: reconstruct the parent module text from sibling chunks for Claude text → parse structured JSON answer → API returns {answer, source_type, source_url, screenshot_url, candidates}. The citation is doc-level best-effort (#49): `source_url` carries a `#page=N` deep link + `screenshot_url` when Claude pins a PDF page, falls back to a page-less document-level PDF link (screenshot null) otherwise, and all source links are null on a #32 abstention.`
 
 Every step is a span in the OTel trace — when something is slow or wrong, the waterfall in Grafana tells you which context owns the problem.
 

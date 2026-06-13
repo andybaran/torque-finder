@@ -89,17 +89,26 @@ def _print_dry() -> None:
 def _grade_sampled(case, answer, chosen) -> GradedRecord:  # type: ignore[no-untyped-def]
     """Pure grading of one sampled case → GradedRecord (offline-testable).
 
+    Doc-level grading (#49): the headline ``passed`` is value-correct AND the
+    cited DOCUMENT is the right manual (doc identity via ``document_title``) —
+    NOT the exact page. ``value_ok`` is kept as the guard that stops a
+    wrong-page-same-doc *wrong* answer from passing (the answer must still carry
+    the pinned torque). The old strict doc+page signal is demoted to the
+    secondary ``doc_page_precise`` metric (cited chunk text documents the value),
+    which we keep reporting toward the later page-return feature.
+
     ``chosen`` is None on a #32 abstention (no cited source): that is a miss on
     an answerable case — value may still appear in the abstain text, but with no
-    provenance it cannot pass, and the mode is recorded as ``abstained`` so the
-    histogram separates over-abstention from wrong values.
+    cited document it cannot pass, and the mode is recorded as ``abstained`` so
+    the histogram separates over-abstention from wrong values/wrong docs.
     """
     haystack = " | ".join(p for p in (answer.text, answer.torque) if p)
     value_ok = value_matches(haystack, case.expected_torque)
-    prov_ok = (
-        provenance_ok(chosen.text, case.expected_torque) if chosen is not None else False
-    )
-    passed = value_ok and prov_ok
+    doc_ok = chosen is not None and chosen.document_title == case.document_title
+    passed = value_ok and doc_ok
+    # Strict doc+page precision (secondary): the cited chunk text itself
+    # documents the pinned value. Only meaningful on a doc-level pass.
+    doc_page_precise = passed and provenance_ok(chosen.text, case.expected_torque)
     if passed:
         failure_mode = "correct"
     elif chosen is None:
@@ -107,12 +116,15 @@ def _grade_sampled(case, answer, chosen) -> GradedRecord:  # type: ignore[no-unt
     elif not value_ok:
         failure_mode = "wrong_value"
     else:
+        # value correct but wrong manual cited — a doc-recall miss, not a value
+        # error and not an abstention.
         failure_mode = "other"
     return GradedRecord(
         case_id=case.case_id,
         passed=passed,
         failure_mode=failure_mode,
-        retrieved_expected=prov_ok,
+        retrieved_expected=doc_ok,
+        doc_page_precise=doc_page_precise,
     )
 
 
@@ -169,7 +181,8 @@ def _print_metrics(sampled, adversarial) -> None:  # type: ignore[no-untyped-def
     print("QUALITY EVAL METRICS")
     print("=" * 70)
     print(f"source-grounded pass rate: {sm.n_pass}/{sm.n} ({sm.pass_rate:.1%})")
-    print(f"recall@k:                  {sm.recall_at_k:.1%}")
+    print(f"recall@k (doc-level):      {sm.recall_at_k:.1%}")
+    print(f"page-precision (doc+page): {sm.page_precision:.1%}")
     print(f"contamination %:           {sm.contamination_pct:.1f}%")
     print(f"tool-size completeness:    {sm.tool_size_completeness:.1%}")
     print(f"failure-mode histogram:    {sm.failure_mode_histogram}")

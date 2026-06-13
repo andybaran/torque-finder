@@ -28,13 +28,27 @@ from parts_lookup.domain.models import (
     RetrievedChunk,
     SourceType,
 )
+from parts_lookup.observability import get_logger
 from parts_lookup.retrieval.embedder import VoyageEmbedder
 from parts_lookup.retrieval.keyword import keyword_search
 from parts_lookup.retrieval.product_match import extract_query_scope, scope_matches
 from parts_lookup.retrieval.vector import vector_search
 
+logger = get_logger(__name__)
+
 RRF_K: int = 60
 DEFAULT_TOP_K_PER_CHANNEL: int = 20
+
+# --- Doc-level aggregation (#49) ---------------------------------------------
+# Reuse the RRF decay constant so the doc-aggregation scale matches the fusion
+# scale the #28/#29/#30 calibration notes already reason about. Doc score is a
+# reciprocal-rank weight over the POST-RERANK order of `fused`:
+#   doc_score(d) = Σ over the doc's hits of 1 / (RANK_AGG_K + rank)
+# where `rank` is the hit's 1-indexed position in the reranked `fused` list.
+# Because #28's product boost and #29's title rerank only REORDER `fused`
+# (`.score` stays raw RRF — verified), a position-decay over that order is how
+# those boosts flow into doc ranking, with no score mutation.
+RANK_AGG_K: int = RRF_K
 
 # --- Within-doc page expansion (#30) defaults --------------------------------
 # Used only when hybrid_search is called without explicit settings (tests,
@@ -337,6 +351,59 @@ def _select_leader_chunk(fused: list[_FusedHit]) -> _FusedHit | None:
     return min(fused, key=lambda h: (-h.score, h.chunk_id))
 
 
+def _aggregate_to_documents(
+    fused: list[_FusedHit],
+    meta: dict[int, _ChunkMeta],
+) -> list[tuple[int, float]]:
+    """Aggregate page hits into per-document scores by RANK over reranked order (#49).
+
+    ``fused`` is expected to be the list **after** ``_rerank_by_title`` then
+    ``_rerank_by_product`` — i.e. its ORDER already encodes #28's product boost
+    and #29's title rerank (both reorder-only; ``_FusedHit.score`` is still raw
+    RRF). So we deliberately key off rank POSITION, not ``.score``:
+
+        doc_score(d) = Σ over hits h with meta[h].document_id == d
+                         of  1 / (RANK_AGG_K + rank(h))
+
+    where ``rank(h)`` is the hit's 1-indexed position in ``fused``. A page the
+    reranks lifted to rank 2 contributes ``1/(60+2)``; the same page left at
+    rank 11 contributes ``1/(60+11)`` — so a doc the boosts pulled forward
+    aggregates higher, by construction. The decay is bounded and monotone, so a
+    sprawling catalog's rank-15..20 tail (each ≤ ~1/75) cannot out-sum a focused
+    manual whose answer pages sit at ranks 1-3 (~1/61 each).
+
+    Hits whose ``chunk_id`` is absent from ``meta`` are skipped (no owning doc
+    is known). Returns ``(document_id, doc_score)`` sorted by score desc, with a
+    deterministic tiebreak on the LOWEST ``document_id`` (mirrors
+    ``_select_leader_chunk``'s explicit tiebreak). Empty input → empty list.
+    """
+    doc_scores: dict[int, float] = {}
+    for rank, hit in enumerate(fused, start=1):
+        m = meta.get(hit.chunk_id)
+        if m is None:
+            continue
+        doc_scores[m.document_id] = (
+            doc_scores.get(m.document_id, 0.0) + 1.0 / (RANK_AGG_K + rank)
+        )
+    return sorted(doc_scores.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _select_leading_document(
+    fused: list[_FusedHit],
+    meta: dict[int, _ChunkMeta],
+) -> int | None:
+    """The top aggregate-rank document — the doc whose pages get expanded (#49).
+
+    Subsumes ``_select_leader_chunk``'s role for choosing *which doc* to expand:
+    instead of the single rank-1 chunk's doc, the doc with the most aggregate
+    rank-weighted evidence wins (see :func:`_aggregate_to_documents`). The
+    anchor PAGE within that doc is still the doc's highest-ranked base page
+    (chosen separately). Returns ``None`` for an empty/unknown pool.
+    """
+    docs = _aggregate_to_documents(fused, meta)
+    return docs[0][0] if docs else None
+
+
 def _rerank_within_doc(
     query_text: str,
     fused: list[_FusedHit],
@@ -463,14 +530,18 @@ async def hybrid_search(
     is single-digit-ms at LAN RTT to Postgres, so sequential is fine; if it
     ever isn't, the right move is two sessions, not gathered ops on one.
 
-    Within-doc page expansion (#30): after fusion + the title rerank, the single
-    top-RRF document is expanded by ``±page_window`` neighbor pages (PDF only),
-    capped at ``max_candidates`` total pages. ``top_k`` selects the base
-    candidate breadth (which docs/pages seed the set); ``max_candidates`` is the
-    hard page budget sent to Claude. Expansion happens HERE — inside
-    ``hybrid_search`` — and returns one ordered list, so ``query.py``'s
-    ``enumerate``/strict-``zip``/``source_index`` 1:1 contract is preserved
-    (base candidates are never reordered; neighbors are append-only).
+    Doc-level retrieval with leading-doc page coverage (#49, extends #30): after
+    fusion + the #29 title rerank + the #28 product boost, the LEADING DOCUMENT
+    is chosen by aggregating the full reranked pool into per-document rank-decay
+    scores (``_select_leading_document``) — not by the single top-RRF chunk — so
+    the doc with the most aggregate evidence wins. That doc is then expanded by
+    ``±page_window`` neighbor pages (PDF only), capped at ``max_candidates``
+    total pages. ``top_k`` selects the base candidate breadth (which docs/pages
+    seed the set); ``max_candidates`` is the hard page budget sent to Claude.
+    Expansion happens HERE — inside ``hybrid_search`` — and returns one ordered
+    list, so ``query.py``'s ``enumerate``/strict-``zip``/``source_index`` 1:1
+    contract is preserved (base candidates are never reordered; neighbors are
+    append-only).
     """
     query_embedding = await embedder.embed_query(query_text)
 
@@ -514,7 +585,6 @@ async def hybrid_search(
         for cid, row in rows.items()
     }
     fused = _rerank_by_product(query_text, fused, facets)
-    base = fused[:top_k]
 
     # --- Within-doc page-neighbor expansion (#30) ---------------------------
     # Build the per-chunk metadata the expansion algorithm needs (pure values).
@@ -529,7 +599,42 @@ async def hybrid_search(
         for cid, row in rows.items()
     }
 
-    leader = _select_leader_chunk(base)
+    # --- Doc-level leading-document selection (#49) -------------------------
+    # Aggregate the FULL reranked `fused` pool (~per_channel_k pages, post both
+    # reranks) into per-document scores by rank-decay, and pick the top doc to
+    # expand. Running over the full pool (not just `base = fused[:top_k]`) is
+    # what lets a runner-up-at-rank-1 doc — one weak top page but several strong
+    # rank-6..20 pages — win, which is the measured #48 bottleneck (within-doc
+    # page localization on the doc we'd already pick). Doc ranking inherits the
+    # #28/#29 reorders via position (their boosts live only in `fused` order).
+    base = fused[:top_k]
+    leading_doc_id = _select_leading_document(fused, meta)
+
+    # Anchor = the leading doc's highest-RANKED page, taken from `base` order
+    # when present (so the page-budget/neighbor logic is unchanged), else the
+    # leading doc's highest-ranked page anywhere in the reranked pool (covers a
+    # doc that won on tail evidence with no page in the top_k base).
+    leader: _FusedHit | None = None
+    if leading_doc_id is not None:
+        leader = _select_leader_chunk(
+            [
+                hit
+                for hit in base
+                if (m := meta.get(hit.chunk_id)) is not None
+                and m.document_id == leading_doc_id
+            ]
+        )
+        if leader is None:
+            leader = next(
+                (
+                    hit
+                    for hit in fused
+                    if (m := meta.get(hit.chunk_id)) is not None
+                    and m.document_id == leading_doc_id
+                ),
+                None,
+            )
+
     neighbor_rows: dict[int, Any] = {}
     assembled = base
     if leader is not None and (leader_meta := meta.get(leader.chunk_id)) is not None:
@@ -575,6 +680,22 @@ async def hybrid_search(
                 anchor_score=leader.score,
                 max_candidates=max_candidates,
             )
+            # Bounded-cost audit trail (#49): how many candidate pages the page
+            # budget dropped. Considered = base winners + leader-doc neighbors
+            # not already in base; assembled is capped at `max_candidates`.
+            kept_ids = {hit.chunk_id for hit in assembled}
+            considered_ids = {hit.chunk_id for hit in base} | {
+                n.chunk_id for n in neighbor_metas
+            }
+            n_dropped = len(considered_ids - kept_ids)
+            if n_dropped:
+                logger.info(
+                    "retrieval.page_budget_drop",
+                    document_id=leader_meta.document_id,
+                    n_kept=len(assembled),
+                    n_dropped=n_dropped,
+                    budget=max_candidates,
+                )
         else:
             assembled = base[:max_candidates]
     else:

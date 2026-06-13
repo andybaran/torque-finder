@@ -50,7 +50,11 @@ class GradedRecord:
     ``passed`` is the boolean verdict. ``failure_mode`` is one of
     :data:`FAIL_MODES` and is only meaningful when ``passed`` is False.
     ``retrieved_expected`` records whether the right source appeared anywhere in
-    the top-k hits (recall@k), independent of whether extraction got the value.
+    the top-k hits (recall@k). As of #49 this is the DOC-LEVEL signal: the right
+    *manual* was cited (doc identity), independent of whether the exact page was
+    pinned. ``doc_page_precise`` is the stricter doc+page secondary metric — the
+    cited chunk additionally documents the value at the right page — demoted
+    from the headline by #49 (page-return is a tracked later feature).
     ``tool_size_expected`` / ``tool_size_present`` drive tool-size completeness.
     """
 
@@ -58,6 +62,7 @@ class GradedRecord:
     passed: bool
     failure_mode: str = "correct"
     retrieved_expected: bool = False
+    doc_page_precise: bool = False
     tool_size_expected: bool = False
     tool_size_present: bool = False
 
@@ -76,6 +81,7 @@ class EvalMetrics:
     n_pass: int
     pass_rate: float
     recall_at_k: float
+    page_precision: float
     contamination_pct: float
     tool_size_completeness: float
     failure_mode_histogram: dict[str, int] = field(default_factory=dict)
@@ -99,13 +105,18 @@ def aggregate(records: list[GradedRecord]) -> EvalMetrics:
     tool_expected = [r for r in records if r.tool_size_expected]
     tool_present = sum(1 for r in tool_expected if r.tool_size_present)
 
+    # recall@k is now DOC-LEVEL (right manual cited); page_precision is the
+    # stricter doc+page secondary (#49). recall_at_k >= page_precision always,
+    # since doc_page_precise implies the doc was right.
     recall_hits = sum(1 for r in records if r.retrieved_expected)
+    page_precise = sum(1 for r in records if r.doc_page_precise)
 
     return EvalMetrics(
         n=n,
         n_pass=n_pass,
         pass_rate=_ratio(n_pass, n),
         recall_at_k=_ratio(recall_hits, n),
+        page_precision=_ratio(page_precise, n),
         contamination_pct=100.0 * _ratio(contamination, n),
         tool_size_completeness=_ratio(tool_present, len(tool_expected)),
         failure_mode_histogram=dict(histogram),
