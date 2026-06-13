@@ -74,3 +74,16 @@ class AnswerResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = Field(..., examples=["ok"])
     version: str
+
+
+class ReadinessResponse(BaseModel):
+    """Deep-readiness probe payload (/readyz).
+
+    ``ready`` reflects whether the upstream answer service (Anthropic) was
+    healthy on the most recent extraction call — distinct from ``/healthz``
+    liveness, which is static. When ``ready`` is False the route returns 503.
+    """
+
+    ready: bool = Field(..., examples=[True])
+    extraction_upstream_healthy: bool = Field(..., examples=[True])
+    version: str

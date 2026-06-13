@@ -34,6 +34,21 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     return structlog.get_logger(name) if name else structlog.get_logger()
 
 
+def capture_exception(exc: BaseException) -> None:
+    """Send an exception to Sentry, no-op when Sentry isn't installed/configured.
+
+    Used to page on-call for operator-fault upstream failures (e.g. exhausted
+    Anthropic credit, bad API key). Safe to call unconditionally: if the
+    ``sentry_sdk`` dependency is absent or ``setup_observability`` hasn't run,
+    this is a silent no-op rather than a second exception on the error path.
+    """
+    try:
+        import sentry_sdk
+    except ImportError:
+        return
+    sentry_sdk.capture_exception(exc)
+
+
 def setup_observability(settings: Settings) -> None:
     """Wire structlog, OpenTelemetry, and Sentry. Idempotent."""
     global _initialised

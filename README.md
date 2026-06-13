@@ -137,3 +137,40 @@ Railway picks up `infra/railway.toml`. Set the env vars from `.env.example`
 in the project's Variables panel; the start command runs migrations then
 boots uvicorn. The runtime container does NOT install the `ingestion` extra,
 keeping PyTorch off the request path.
+
+## Health probes & alerting
+
+Two probes (see `api/routes/health.py`):
+
+- `GET /healthz` — **liveness**, static 200 while the process is up. Used by
+  the platform to decide whether to restart the container.
+- `GET /readyz` — **deep readiness**. Returns 200 when the most recent
+  Anthropic (answer-service) call succeeded, 503 when it failed — a cheap,
+  cached signal, so probing never spends a vision call. It can lag a
+  just-started outage by one request window (acceptable for an uptime
+  monitor). Point uptime monitors / load-balancer draining here, not at
+  `/healthz`.
+
+Every Anthropic call failure is classified (`extraction/claude_client.py`):
+transient (429/529/conn/timeout/5xx) → HTTP **503 + `Retry-After`**;
+operator-fault (billing-400 / 401 / 403 / 413) → **503** + a Sentry capture
+(pages on-call); a genuine parse failure stays **502**. Each upstream failure
+emits a structured log event **`extraction.upstream_failure`** carrying
+`error_class`, `status_code`, `request_id`, `retry_after`, and the verbatim
+`upstream_message`.
+
+### Grafana Cloud alert (configure manually — not in this repo)
+
+The alert rule lives in Grafana Cloud, not version control. Create a **log
+alert** on the structured-log stream (Loki) keyed off the event above, e.g.:
+
+```logql
+sum(count_over_time({service="parts-lookup"}
+  | json | event="extraction.upstream_failure" [5m]))
+```
+
+Suggested rule: **fire when this count is > 0 sustained over 10m** (any
+operator-fault — exhausted credit, bad key — is already paged via Sentry; this
+catches a sustained transient-failure rate that Sentry won't). Split by
+`error_class` for a per-cause breakdown. Tune the threshold to the ~10
+queries/day volume; even a single billing-class failure warrants a page.

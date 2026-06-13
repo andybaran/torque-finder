@@ -8,11 +8,18 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock
 
+import anthropic
+import httpx
 import pytest
 import structlog
+from anthropic._exceptions import OverloadedError, RequestTooLargeError
 
 from parts_lookup.config import Settings
-from parts_lookup.domain.errors import ExtractionError
+from parts_lookup.domain.errors import (
+    ExtractionError,
+    ExtractionUpstreamUnauthorized,
+    ExtractionUpstreamUnavailable,
+)
 from parts_lookup.domain.models import SourceType
 from parts_lookup.extraction import prompt
 from parts_lookup.extraction.claude_client import ClaudeExtractor, ExtractionCandidate
@@ -333,3 +340,265 @@ def _only_log(logs: list[dict[str, Any]]) -> dict[str, Any]:
     """Exactly one failure log line is expected; return it."""
     assert len(logs) == 1, f"expected one log line, got {logs!r}"
     return logs[0]
+
+
+# --- SDK-exception builders (#33) -------------------------------------------
+# Anthropic SDK exceptions cannot be raised bare: the APIStatusError family
+# needs a constructed httpx.Response, and APIConnectionError/APITimeoutError
+# need an httpx.Request. These helpers build instances that match the
+# production exception shape (status_code/request_id/retry-after all survive),
+# so the gating tests aren't accidentally testing a fake that wouldn't classify
+# the same way.
+
+_REQUEST = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+
+def _status_exc(
+    exc_cls: type[anthropic.APIStatusError],
+    status_code: int,
+    message: str = "boom",
+    *,
+    request_id: str = "req_test",
+    retry_after: str | None = None,
+) -> anthropic.APIStatusError:
+    headers = {"request-id": request_id}
+    if retry_after is not None:
+        headers["retry-after"] = retry_after
+    response = httpx.Response(status_code, headers=headers, request=_REQUEST)
+    return exc_cls(message, response=response, body=None)
+
+
+def _extractor_raising(exc: BaseException) -> ClaudeExtractor:
+    """A live-path extractor whose messages.create raises ``exc``."""
+    client = SimpleNamespace(
+        messages=SimpleNamespace(create=AsyncMock(side_effect=exc))
+    )
+    return ClaudeExtractor(_live_settings(), client=client)  # type: ignore[arg-type]
+
+
+class TestUpstreamFailureClassification:
+    """#33: every Anthropic call failure becomes a typed, logged, attributable
+    domain error with a distinct HTTP status — no more opaque 502."""
+
+    @pytest.mark.parametrize(
+        ("exc", "expect_status", "expect_request_id", "expect_retry_after"),
+        [
+            (
+                _status_exc(
+                    OverloadedError, 529, request_id="req_over", retry_after="3"
+                ),
+                529,
+                "req_over",
+                "3",
+            ),
+            (
+                _status_exc(
+                    anthropic.RateLimitError, 429, request_id="req_rl", retry_after="7"
+                ),
+                429,
+                "req_rl",
+                "7",
+            ),
+            (
+                anthropic.APITimeoutError(request=_REQUEST),
+                None,
+                None,
+                "5",  # default Retry-After (no upstream response)
+            ),
+            (
+                anthropic.APIConnectionError(message="dns", request=_REQUEST),
+                None,
+                None,
+                "5",
+            ),
+            (
+                _status_exc(anthropic.InternalServerError, 500, request_id="req_5xx"),
+                500,
+                "req_5xx",
+                "5",
+            ),
+        ],
+    )
+    async def test_transient_errors_become_unavailable(
+        self,
+        exc: BaseException,
+        expect_status: int | None,
+        expect_request_id: str | None,
+        expect_retry_after: str | None,
+    ) -> None:
+        extractor = _extractor_raising(exc)
+        with pytest.raises(ExtractionUpstreamUnavailable) as ei:
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert ei.value.status_code == expect_status
+        assert ei.value.request_id == expect_request_id
+        assert ei.value.retry_after == expect_retry_after
+
+    async def test_529_does_not_fall_through_to_base_502(self) -> None:
+        """Regression guard for the v1 bug: OverloadedError(529) is a SIBLING of
+        InternalServerError, so a broad `except InternalServerError` would miss
+        it and a 529 would degrade to base ExtractionError → 502. It must be the
+        transient class."""
+        extractor = _extractor_raising(_status_exc(OverloadedError, 529))
+        with pytest.raises(ExtractionUpstreamUnavailable):
+            await extractor.extract("q?", [_pdf_candidate(1)])
+
+    async def test_connection_error_branch_tolerates_missing_attrs(self) -> None:
+        """APIConnectionError/APITimeoutError carry no HTTP response, so
+        status_code/request_id are absent — the branch must None-guard them
+        rather than AttributeError."""
+        extractor = _extractor_raising(
+            anthropic.APIConnectionError(message="reset", request=_REQUEST)
+        )
+        with pytest.raises(ExtractionUpstreamUnavailable) as ei:
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert ei.value.status_code is None
+        assert ei.value.request_id is None
+
+    @pytest.mark.parametrize(
+        ("exc", "expect_status"),
+        [
+            (
+                _status_exc(
+                    anthropic.BadRequestError,
+                    400,
+                    "Your credit balance is too low to access the Anthropic API.",
+                ),
+                400,
+            ),
+            (_status_exc(anthropic.AuthenticationError, 401), 401),
+            (_status_exc(anthropic.PermissionDeniedError, 403), 403),
+            (_status_exc(RequestTooLargeError, 413), 413),
+        ],
+    )
+    async def test_operator_faults_become_unauthorized(
+        self, exc: anthropic.APIStatusError, expect_status: int
+    ) -> None:
+        extractor = _extractor_raising(exc)
+        with pytest.raises(ExtractionUpstreamUnauthorized) as ei:
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert ei.value.status_code == expect_status
+        assert ei.value.request_id == "req_test"
+
+    async def test_non_credit_400_stays_base_extraction_error(self) -> None:
+        """A 400 that is NOT a credit-balance message is our request shape, not
+        an operator fault to page on — stays base ExtractionError → 502."""
+        extractor = _extractor_raising(
+            _status_exc(anthropic.BadRequestError, 400, "messages: invalid role")
+        )
+        with pytest.raises(ExtractionError) as ei:
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert not isinstance(ei.value, ExtractionUpstreamUnavailable)
+        assert not isinstance(ei.value, ExtractionUpstreamUnauthorized)
+
+    async def test_emits_structured_upstream_failure_log(self) -> None:
+        exc = _status_exc(
+            anthropic.RateLimitError, 429, request_id="req_log", retry_after="9"
+        )
+        extractor = _extractor_raising(exc)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ExtractionUpstreamUnavailable),
+        ):
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        entry = _only_log(logs)
+        assert entry["event"] == "extraction.upstream_failure"
+        assert entry["error_class"] == "RateLimitError"
+        assert entry["status_code"] == 429
+        assert entry["request_id"] == "req_log"
+        assert entry["retry_after"] == "9"
+        assert "upstream_message" in entry
+
+    async def test_successful_call_flips_upstream_healthy_true(self) -> None:
+        valid = {
+            "answer": "40 N·m",
+            "tool_size": None,
+            "torque": "40 N·m",
+            "source_index": 1,
+            "confidence": 0.9,
+        }
+        client = SimpleNamespace(
+            messages=SimpleNamespace(create=AsyncMock(return_value=_response(valid)))
+        )
+        extractor = ClaudeExtractor(_live_settings(), client=client)  # type: ignore[arg-type]
+        await extractor.extract("q?", [_pdf_candidate(1)])
+        assert extractor.upstream_healthy is True
+
+    async def test_upstream_failure_flips_upstream_healthy_false(self) -> None:
+        extractor = _extractor_raising(_status_exc(OverloadedError, 529))
+        assert extractor.upstream_healthy is True
+        with pytest.raises(ExtractionUpstreamUnavailable):
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert extractor.upstream_healthy is False
+
+
+class TestRetryAndConcurrency:
+    """#33(b): SDK built-in retry is wired (no new dep), and a Semaphore caps
+    concurrency. Billing/auth are never retried."""
+
+    async def test_client_constructed_with_max_retries_and_timeout(self) -> None:
+        """The non-stub path hands the SDK its built-in retry/backoff knobs."""
+        captured: dict[str, Any] = {}
+
+        class _FakeAsyncAnthropic:
+            def __init__(self, **kwargs: Any) -> None:
+                captured.update(kwargs)
+
+        import parts_lookup.extraction.claude_client as cc
+
+        original = anthropic.AsyncAnthropic
+        cc.anthropic.AsyncAnthropic = _FakeAsyncAnthropic  # type: ignore[misc,assignment]
+        try:
+            ClaudeExtractor(_live_settings(extraction_max_retries=5))
+        finally:
+            cc.anthropic.AsyncAnthropic = original  # type: ignore[misc]
+        assert captured["max_retries"] == 5
+        assert captured["timeout"] == 60.0
+
+    async def test_billing_error_is_not_retried_by_app(self) -> None:
+        """Billing is an operator fault: a single call, never an app-level retry
+        loop (the SDK also won't retry a 400). Call count stays 1."""
+        create = AsyncMock(
+            side_effect=_status_exc(
+                anthropic.BadRequestError,
+                400,
+                "Your credit balance is too low to access the Anthropic API.",
+            )
+        )
+        client = SimpleNamespace(messages=SimpleNamespace(create=create))
+        extractor = ClaudeExtractor(_live_settings(), client=client)  # type: ignore[arg-type]
+        with pytest.raises(ExtractionUpstreamUnauthorized):
+            await extractor.extract("q?", [_pdf_candidate(1)])
+        assert create.await_count == 1
+
+    async def test_semaphore_caps_in_flight_calls(self) -> None:
+        import asyncio
+
+        max_concurrency = 2
+        in_flight = 0
+        peak = 0
+
+        async def _create(**_: Any) -> SimpleNamespace:
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            await asyncio.sleep(0.01)
+            in_flight -= 1
+            return _response(
+                {
+                    "answer": "x",
+                    "tool_size": None,
+                    "torque": None,
+                    "source_index": 1,
+                    "confidence": 0.5,
+                }
+            )
+
+        client = SimpleNamespace(messages=SimpleNamespace(create=_create))
+        extractor = ClaudeExtractor(
+            _live_settings(extraction_max_concurrency=max_concurrency),
+            client=client,  # type: ignore[arg-type]
+        )
+        await asyncio.gather(
+            *(extractor.extract("q?", [_pdf_candidate(1)]) for _ in range(8))
+        )
+        assert peak <= max_concurrency

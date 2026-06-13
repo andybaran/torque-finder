@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     # old 1024 limit and truncate mid-object (see #25 eval cases 1065/1294).
     # Tunable without a redeploy via EXTRACTION_MAX_TOKENS.
     extraction_max_tokens: int = Field(default=2048, ge=256, le=8192)
+    # Resilience knobs for the Claude call (#33). The SDK's built-in bounded
+    # exponential backoff honors Retry-After and only retries transient
+    # failures (429/529/5xx/conn) — billing/auth/parse are never retried.
+    # max_retries defaults to the SDK's own DEFAULT_MAX_RETRIES (2).
+    extraction_max_retries: int = Field(default=2, ge=0, le=8)
+    extraction_timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
+    # Cap on concurrent in-flight vision calls so a request burst queues rather
+    # than stampeding Anthropic's rate limit (asyncio.Semaphore, stdlib).
+    extraction_max_concurrency: int = Field(default=4, ge=1, le=32)
 
     # --- Voyage ---
     voyage_api_key: SecretStr = SecretStr("")
