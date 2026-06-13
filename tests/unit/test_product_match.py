@@ -10,6 +10,7 @@ import pytest
 
 from parts_lookup.domain.models import ProductScope
 from parts_lookup.retrieval.product_match import (
+    derive_facet,
     extract_query_scope,
     normalize_product,
     scope_matches,
@@ -156,3 +157,109 @@ class TestScopeMatches:
     def test_fully_generic_candidate_with_no_brand_is_non_blocking(self) -> None:
         asked = extract_query_scope("What torque for the Pike lower-leg bolts?")
         assert scope_matches(asked, ProductScope())  # candidate fully generic
+
+
+class TestGuideDisambiguation:
+    """\"guide\" is BOTH the SRAM Guide brake AND the genre word. Deriving
+    family=\"guide\" on a genre title (a tuning/service/theory GUIDE) is a FALSE
+    POSITIVE — worse than NULL (#28). Pinned against the real corpus titles."""
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "2016-2019-guide-ultimate-service-manual-english.pdf",
+            "2017-2019-guide-rs-and-r-service-manual.pdf",
+            "2017-2019-guide-rsc-service-manual-english.pdf",
+            "gen0000000005632-rev-c-guide-t-english.pdf",
+            "service-manual-2017-2019-guide-re-english.pdf",
+        ],
+    )
+    def test_guide_brake_titles_derive_guide_family(self, title: str) -> None:
+        assert normalize_product(title).family == "guide"
+
+    @pytest.mark.parametrize(
+        ("title", "expect_family"),
+        [
+            # Genre "guide" — must NOT derive the Guide brake family.
+            ("2001-2012-dual-air-tuning-guide.pdf", None),
+            ("2006-rockshox-front-suspension-dual-air-service-guide.pdf", None),
+            ("rockshox-rear-shock-piston-tuning-guide.pdf", None),
+            ("sram-avid-disc-brake-pad-identification-guide.pdf", None),
+            ("suspension-theory-guide.pdf", None),
+            # "guide" is genre here, but boxxer is the real product → boxxer wins.
+            ("boxxer-gen-d-fork-installation---quick-start-guide.pdf", "boxxer"),
+        ],
+    )
+    def test_genre_guide_titles_do_not_derive_guide(
+        self, title: str, expect_family: str | None
+    ) -> None:
+        assert normalize_product(title).family == expect_family
+
+    def test_guide_brake_query_still_identifies_guide(self) -> None:
+        """The query form \"Guide brake\" must still resolve to family=guide so
+        #32's gate treats it as the in-corpus Guide brake (the probe set's
+        'Guide brake hydro-phase equalizer' is part-level, not product-level)."""
+        scope = extract_query_scope(
+            "What torque for the Guide brake's hydro-phase equalizer screw?"
+        )
+        assert scope.family == "guide"
+
+
+class TestDeriveFacet:
+    """The #28 persistence helper: derive (product_family, brand) to STORE.
+
+    FAIL-SAFE (reviewer-required, precision over recall): a confidently-identified
+    product persists a family; anything weaker persists family=None — never a
+    guess. A WRONG stored family is worse than NULL (mis-boosts retrieval + trips
+    the contamination guard on correct answers)."""
+
+    @pytest.mark.parametrize(
+        ("title", "family", "brand"),
+        [
+            # Clean, product-bearing titles → correct family persisted.
+            ("2014-2017-pike-service-manual.pdf", "pike", None),
+            ("2021-2022-zeb-service-manual.pdf", "zeb", None),
+            ("2012-avid-code-and-code-r-service-manual.pdf", "code", "avid"),
+            # The literal "serivce" typo must NOT break clean derivation.
+            ("2014-2022-vivid-air-serivce-manual.pdf", "vivid", None),
+            ("bb7-user-manual.pdf", "bb7", None),
+        ],
+    )
+    def test_clean_title_persists_correct_family(
+        self, title: str, family: str, brand: str | None
+    ) -> None:
+        assert derive_facet(title) == (family, brand)
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            # Unrecognizable / hash-only / generic spec sheets → NO family.
+            "some-completely-unknown-doc.pdf",
+            "pdf.pdf",
+            "2024-mtb-frame-fit-specifications.pdf",
+            "2015-front-suspension-oil-air-spring-chart.pdf",
+            "component-serial-number-locator.pdf",
+            # Genre "guide" titles → must NOT persist a guessed family.
+            "suspension-theory-guide.pdf",
+            "rockshox-rear-shock-piston-tuning-guide.pdf",
+        ],
+    )
+    def test_low_confidence_or_generic_title_persists_null_family(
+        self, title: str
+    ) -> None:
+        family, _brand = derive_facet(title)
+        assert family is None
+
+    def test_generic_brand_title_keeps_brand_drops_family(self) -> None:
+        """A generic multi-product manual keeps its brand but persists no family
+        (so the boost can still brand-match it without a false product claim)."""
+        assert derive_facet("2010-sram-technical-manual.pdf") == (None, "sram")
+
+    def test_typo_serivce_does_not_corrupt_family(self) -> None:
+        """The known corpus typo 'serivce' (in 2014-2022-vivid-air-serivce-...) is
+        ignored — it is not a product token, so the real family (vivid) wins and
+        the typo never produces a wrong family."""
+        assert derive_facet("2014-2022-vivid-air-serivce-manual.pdf") == ("vivid", None)
+
+    def test_empty_title_is_null(self) -> None:
+        assert derive_facet("") == (None, None)

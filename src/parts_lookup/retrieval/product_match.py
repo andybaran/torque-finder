@@ -151,12 +151,59 @@ _GENERIC_TITLE_TOKENS: frozenset[str] = frozenset(
     }
 )
 
+# "guide" is genuinely ambiguous in the real corpus: it is BOTH the SRAM Guide
+# brake family AND the English noun (a "tuning guide", a "theory guide", an
+# "identification guide"). The DB title survey for #28 found 10 titles with
+# "guide"; 5 are the brake product and 5 are the genre word. Deriving
+# family="guide" on a genre title is a FALSE POSITIVE — worse than NULL, since
+# it would boost the wrong product (#28) and let a Guide-brake query falsely
+# match a "suspension-theory-guide" title (#32's live gate). So "guide" only
+# counts as the Guide BRAKE family when context confirms the product, not the
+# genre (verified against all 10 corpus titles + the two "Guide brake" probes).
+#
+# * a Guide BRAKE variant token immediately follows "guide" (guide-rs / -rsc /
+#   -re / -r / -t / -ultimate), OR
+# * "guide" is immediately followed by "brake" (the query form), OR
+# * "guide" is NOT immediately preceded by a genre context word and NOT a
+#   trailing "...-guide" suffix (i.e. it leads a product reference).
+_GUIDE_PRODUCT_VARIANTS: frozenset[str] = frozenset(
+    {"rs", "rsc", "re", "r", "t", "ultimate"}
+)
+_GUIDE_GENRE_CONTEXT: frozenset[str] = frozenset(
+    {"tuning", "theory", "service", "identification", "start", "quick"}
+)
+
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def _tokens(text: str) -> list[str]:
     """Lowercase, split on non-alphanumerics. Keeps ordering for phrase checks."""
     return _TOKEN_RE.findall(text.lower())
+
+
+def _guide_is_product(tokens: list[str]) -> bool:
+    """Disambiguate "guide" (SRAM Guide brake) from the genre word "guide".
+
+    FAIL-SAFE: returns ``True`` (→ family="guide") ONLY when a "guide"
+    occurrence is positively a product reference; otherwise the genre reading
+    wins and the family is suppressed. Operates on the ordered token list so the
+    preceding/following word can be inspected. See ``_GUIDE_GENRE_CONTEXT``.
+    """
+    for i, tok in enumerate(tokens):
+        if tok != "guide":
+            continue
+        prev_tok = tokens[i - 1] if i > 0 else None
+        next_tok = tokens[i + 1] if i + 1 < len(tokens) else None
+        if next_tok == "brake":  # "Guide brake" — the query form
+            return True
+        if next_tok in _GUIDE_PRODUCT_VARIANTS:  # guide-rs / -rsc / -re / -t / …
+            return True
+        if prev_tok in _GUIDE_GENRE_CONTEXT:  # "...-tuning-guide", "service-guide"
+            continue
+        if next_tok is None:  # trailing "...-guide" suffix → genre
+            continue
+        # "guide" leads a reference and isn't a known genre context → product.
+    return False
 
 
 def _detect_brand(lowered: str, tokens: set[str]) -> tuple[str | None, bool]:
@@ -175,11 +222,21 @@ def _detect_brand(lowered: str, tokens: set[str]) -> tuple[str | None, bool]:
     return None, False
 
 
-def _detect_family(tokens: set[str]) -> str | None:
-    """First family whose identifying token appears. ``None`` if none match."""
+def _detect_family(tokens: set[str], ordered: list[str]) -> str | None:
+    """First family whose identifying token appears. ``None`` if none match.
+
+    ``ordered`` is the positional token list; it is only consulted for the
+    context-sensitive "guide" disambiguation (genre word vs. Guide brake) — all
+    other families are unambiguous single tokens.
+    """
     for family, surface in _FAMILY_TOKENS.items():
-        if surface & tokens:
-            return family
+        if not (surface & tokens):
+            continue
+        if family == "guide" and not _guide_is_product(ordered):
+            # "guide" matched as the genre word, not the Guide brake → suppress
+            # so a generic guide title falls through to brand-only / NULL.
+            continue
+        return family
     return None
 
 
@@ -203,7 +260,7 @@ def normalize_product(text: str) -> ProductScope:
 
     brand, _recognized = _detect_brand(lowered, token_set)
     # Generic tokens never count as a family.
-    family = _detect_family(token_set - _GENERIC_TITLE_TOKENS)
+    family = _detect_family(token_set - _GENERIC_TITLE_TOKENS, token_list)
 
     if family is None and brand is None:
         return ProductScope()
@@ -211,6 +268,37 @@ def normalize_product(text: str) -> ProductScope:
     # Family identification is the strong signal; brand-only is weaker.
     confidence = 0.9 if family is not None else 0.6
     return ProductScope(family=family, brand=brand, confidence=confidence)
+
+
+# Confidence bar for PERSISTING a derived family to the #28 facet column. A
+# title that derives only a brand (confidence ~0.6) is below the bar: we keep
+# the brand but persist family=None, never a guessed family. The query-time
+# live gate (#32) uses the looser bar in `scope_matches`; persisting is stricter
+# because a wrong stored family is sticky and would mis-boost every later query.
+_FAMILY_PERSIST_CONFIDENCE: float = 0.9
+
+
+def derive_facet(title: str) -> tuple[str | None, str | None]:
+    """Derive the ``(product_family, brand)`` to PERSIST for a document title.
+
+    The #28 facet derivation. FAIL-SAFE by construction (reviewer-required):
+
+    * It delegates to the same :func:`normalize_product` the #32 live gate uses
+      — one normalizer, no fork.
+    * A ``family`` is persisted ONLY when the derivation cleared the strong
+      confidence bar (a positively identified family token, incl. the "guide"
+      genre/brake disambiguation). Anything weaker → ``family=None``: we never
+      guess a family, because a WRONG stored family is worse than NULL (it would
+      boost the wrong product and trip the contamination guard on correct
+      answers). ``brand`` is persisted when recognized even without a family
+      (generic multi-product manuals keep their brand, family stays NULL).
+
+    Returns ``(None, None)`` for an unrecognizable title — the document simply
+    stays product-blind and retrieval degrades to today's behaviour for it.
+    """
+    scope = normalize_product(title)
+    family = scope.family if scope.confidence >= _FAMILY_PERSIST_CONFIDENCE else None
+    return family, scope.brand
 
 
 def extract_query_scope(query: str) -> ProductScope:
@@ -231,7 +319,7 @@ def extract_query_scope(query: str) -> ProductScope:
     token_set = set(token_list)
 
     brand, recognized_brand = _detect_brand(lowered, token_set)
-    family = _detect_family(token_set - _GENERIC_TITLE_TOKENS)
+    family = _detect_family(token_set - _GENERIC_TITLE_TOKENS, token_list)
 
     if family is None and not recognized_brand:
         return ProductScope()
