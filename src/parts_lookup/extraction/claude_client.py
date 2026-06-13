@@ -180,8 +180,10 @@ class ClaudeExtractor:
         # flows through here automatically. See #25: free-form JSON parsed ~6%
         # non-conforming on real traffic. The post-parse path below stays as
         # defense-in-depth (refusal/max_tokens can still yield non-conforming
-        # text, and structured outputs strips numeric constraints like
-        # source_index>=1, which _parse_response still enforces).
+        # text). NOTE (#44): Anthropic's structured-output schema dialect REJECTS
+        # JSON-Schema validation keywords (minimum/maximum/pattern/…) with a 400 —
+        # it does not silently strip them — so OUTPUT_SCHEMA must carry none.
+        # Ranges like source_index>=1 are enforced post-parse in _parse_response.
         output_config: OutputConfigParam = {
             "format": JSONOutputFormatParam(
                 type="json_schema", schema=OUTPUT_SCHEMA
