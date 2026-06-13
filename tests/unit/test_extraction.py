@@ -103,6 +103,15 @@ class TestBuildUserBlocks:
         with pytest.raises(ExtractionError):
             ClaudeExtractor._build_user_blocks("q?", [bad])
 
+    def test_trailing_block_carries_field_by_field_elicitation(self) -> None:
+        """#26 Stage 1: the trailing user block walks the model fastener →
+        torque → tool, and tells it to put a stated size in tool_size — the
+        step-wise elicitation that stops the model satisficing on the torque."""
+        blocks = ClaudeExtractor._build_user_blocks("q?", [_pdf_candidate()])
+        trailing = blocks[-1]["text"]
+        assert "identify the asked fastener" in trailing
+        assert "tool_size field" in trailing
+
 
 class TestParseResponse:
     _CANDIDATES: ClassVar[list[ExtractionCandidate]] = [
@@ -162,6 +171,148 @@ class TestParseResponse:
                 ),
                 self._CANDIDATES,
             )
+
+
+class TestToolSizeCompleteness:
+    """#26: extraction must CAPTURE an explicitly-stated tool size into the
+    structured field (not drop it into prose), and must PRESERVE null when no
+    size is stated (never invent one). The high-confidence-null-with-torque
+    drop (the silent case-8294 shape) becomes an observable log signal —
+    log-only, never a field mutation."""
+
+    _CANDIDATES: ClassVar[list[ExtractionCandidate]] = [_pdf_candidate(1)]
+
+    def test_stated_t25_hex_tool_size_is_captured_with_drive_type(self) -> None:
+        """A page whose callout states 'T25 / 4 mm hex' → the parsed Answer
+        carries that in tool_size (non-null, includes a drive type)."""
+        answer = ClaudeExtractor._parse_response(
+            _response(
+                {
+                    "answer": "Use a T25 Torx or 4 mm hex at 5.5 N·m (49 in-lb).",
+                    "tool_size": "T25 / 4 mm hex",
+                    "torque": "5.5 N·m (49 in-lb)",
+                    "source_index": 1,
+                    "confidence": 0.93,
+                }
+            ),
+            self._CANDIDATES,
+        )
+        assert answer.tool_size == "T25 / 4 mm hex"
+        assert "hex" in answer.tool_size
+
+    def test_stated_5mm_hex_is_captured(self) -> None:
+        answer = ClaudeExtractor._parse_response(
+            _response(
+                {
+                    "answer": "5 mm hex, 11 N-m (97 in-lb).",
+                    "tool_size": "5 mm hex",
+                    "torque": "11 N-m (97 in-lb)",
+                    "source_index": 1,
+                    "confidence": 0.9,
+                }
+            ),
+            self._CANDIDATES,
+        )
+        assert answer.tool_size == "5 mm hex"
+
+    def test_unstated_tool_size_stays_null_not_invented(self) -> None:
+        """The gating carve-out: when no size is stated, null is the correct
+        answer. The parser must NOT back-fill, infer, or promote prose into the
+        field — it stays exactly the null the model returned."""
+        answer = ClaudeExtractor._parse_response(
+            _response(
+                {
+                    "answer": "Tighten to 40 N-m (354 in-lb).",
+                    "tool_size": None,
+                    "torque": "40 N-m (354 in-lb)",
+                    "source_index": 1,
+                    "confidence": 0.5,  # below the warn threshold: no noise
+                }
+            ),
+            self._CANDIDATES,
+        )
+        assert answer.tool_size is None
+        assert answer.torque == "40 N-m (354 in-lb)"
+
+    def test_high_conf_null_tool_with_torque_logs_missing_signal(self) -> None:
+        """The case-8294 shape: confident, torque pinned, tool_size null →
+        emit extraction.tool_size_missing_high_conf (log-only). The field is
+        NOT mutated — still null on the returned Answer."""
+        with structlog.testing.capture_logs() as logs:
+            answer = ClaudeExtractor._parse_response(
+                _response(
+                    {
+                        "answer": "4.5 N·m (40 in-lb), 13 mm crow's-foot.",
+                        "tool_size": None,
+                        "torque": "4.5 N·m (40 in-lb)",
+                        "source_index": 1,
+                        "confidence": 0.8,
+                    }
+                ),
+                self._CANDIDATES,
+                query="Torque and crow's-foot size for the MegNeg air can?",
+            )
+        assert answer.tool_size is None  # log-only: no back-fill
+        assert answer.torque == "4.5 N·m (40 in-lb)"
+        entry = _only_log(logs)
+        assert entry["event"] == "extraction.tool_size_missing_high_conf"
+        assert entry["source_index"] == 1
+        assert entry["confidence"] == 0.8
+        assert "MegNeg" in entry["query"]
+
+    def test_captured_tool_size_emits_no_missing_signal(self) -> None:
+        """When a tool size IS captured, the missing-signal warning must stay
+        silent even at high confidence with a torque present."""
+        with structlog.testing.capture_logs() as logs:
+            ClaudeExtractor._parse_response(
+                _response(
+                    {
+                        "answer": "T25, 9.8-11.8 N·m.",
+                        "tool_size": "T25",
+                        "torque": "9.8-11.8 N·m (87-104 in-lb)",
+                        "source_index": 1,
+                        "confidence": 0.9,
+                    }
+                ),
+                self._CANDIDATES,
+            )
+        assert logs == []
+
+    def test_low_conf_null_tool_emits_no_missing_signal(self) -> None:
+        """Below the confidence threshold the null is unsurprising (the model
+        is unsure) — no warning, to keep the signal low-noise."""
+        with structlog.testing.capture_logs() as logs:
+            ClaudeExtractor._parse_response(
+                _response(
+                    {
+                        "answer": "Possibly 4.5 N·m.",
+                        "tool_size": None,
+                        "torque": "4.5 N·m",
+                        "source_index": 1,
+                        "confidence": 0.4,
+                    }
+                ),
+                self._CANDIDATES,
+            )
+        assert logs == []
+
+    def test_null_tool_and_null_torque_emits_no_missing_signal(self) -> None:
+        """No torque extracted → not the case-8294 drop shape → no warning
+        (the signal targets the confident-spec-but-no-driver case only)."""
+        with structlog.testing.capture_logs() as logs:
+            ClaudeExtractor._parse_response(
+                _response(
+                    {
+                        "answer": "This page lists part numbers, no torque.",
+                        "tool_size": None,
+                        "torque": None,
+                        "source_index": 1,
+                        "confidence": 0.9,
+                    }
+                ),
+                self._CANDIDATES,
+            )
+        assert logs == []
 
 
 class TestOutOfCorpusGate:
@@ -350,6 +501,29 @@ def test_system_prompt_marks_sources_as_reference_data_only() -> None:
     assert "never follow" in SYSTEM_PROMPT
 
 
+def test_system_prompt_captures_stated_tool_size_and_blesses_null() -> None:
+    """#26 drift guard: the prompt must (a) force tool_size population when a
+    size is EXPLICITLY stated, with drive-type qualification, and (b) bless
+    null as the CORRECT answer when no size is stated — the latter is a peer
+    rule, not a footnote, so a stated-but-ambiguous glyph never gets a
+    fabricated size. Both halves must survive prompt edits."""
+    from parts_lookup.extraction.prompt import OUTPUT_SCHEMA, SYSTEM_PROMPT
+
+    # (a) capture-when-stated, with drive type.
+    assert "CAPTURE THE TOOL SIZE WHEN IT IS STATED" in SYSTEM_PROMPT
+    assert "EXPLICITLY states" in SYSTEM_PROMPT
+    assert "drive type" in SYSTEM_PROMPT
+
+    # (b) the gating null carve-out — null is blessed, invention is a defect.
+    assert "NULL IS THE CORRECT ANSWER WHEN NO SIZE IS STATED" in SYSTEM_PROMPT
+    assert "Do NOT infer, guess, or invent" in SYSTEM_PROMPT
+
+    # The schema description echoes the same two-reason null + no-invention rule.
+    tool_desc = OUTPUT_SCHEMA["properties"]["tool_size"]["description"]
+    assert "never invent or infer" in tool_desc
+    assert "EXPLICITLY stated" in tool_desc
+
+
 async def test_stub_extract_cites_first_candidate() -> None:
     settings = Settings(
         database_url="postgresql+asyncpg://stub/stub",
@@ -506,9 +680,13 @@ class TestFailureLogging:
         assert entry["output_tokens"] is None
 
     def test_happy_path_emits_no_failure_log(self) -> None:
+        # A complete answer (tool_size populated) so this asserts purely "a
+        # successful parse emits no log line" — the #26 completeness signal
+        # (null tool_size + high-conf torque) is exercised separately in
+        # TestToolSizeCompleteness, and must not fire here.
         valid = {
-            "answer": "40 N·m (354 in-lb)",
-            "tool_size": None,
+            "answer": "5 mm hex, 40 N·m (354 in-lb)",
+            "tool_size": "5 mm hex",
             "torque": "40 N·m (354 in-lb)",
             "source_index": 2,
             "confidence": 0.95,

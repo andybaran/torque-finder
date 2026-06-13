@@ -60,6 +60,13 @@ _ABSTAIN_TEXT = (
 # truncated/near-miss payload, short enough to keep log lines manageable.
 _RAW_TEXT_LOG_LIMIT = 2000
 
+# Confidence at/above which a null tool_size alongside an extracted torque is
+# suspicious enough to log (#26): the model was confident about the spec yet
+# emitted no driver, the case-8294 "dropped the structured field" shape. A
+# guess, tunable, LOG-ONLY (never mutates the field) — so the blast radius is
+# zero and it cannot mask the prompt gap by silently back-filling tool_size.
+_TOOL_SIZE_MISSING_WARN_CONFIDENCE = 0.6
+
 # Anthropic signals billing exhaustion as a 400 BadRequestError whose *body
 # message* contains this substring — there is no dedicated exception class for
 # it (verified against anthropic==0.97.0). Matching a substring is brittle if
@@ -399,7 +406,11 @@ class ClaudeExtractor:
                 "type": "text",
                 "text": (
                     f"Question: {query}\n\n"
-                    "Answer the question using only these sources. "
+                    "Answer the question using only these sources. First "
+                    "identify the asked fastener, then its torque, then every "
+                    "tool/driver whose size is explicitly stated for it — put "
+                    "any stated tool size in the tool_size field (leave it null "
+                    "only if no size is stated). "
                     "Reply ONLY with JSON matching the schema."
                 ),
             }
@@ -582,6 +593,25 @@ class ClaudeExtractor:
             raise ExtractionError(
                 f"Claude cited source_index={source_index}, which was not "
                 f"among the supplied candidates"
+            )
+
+        # Diagnosability, not mutation (#26): a confident answer that pins a
+        # torque but drops tool_size is the silent case-8294 shape — the model
+        # likely read a stated size and left the structured field null. Surface
+        # it as a signal so the completeness gap is observable in Grafana; do
+        # NOT back-fill the field (that would mask the prompt gap and risk
+        # promoting prose noise into a contract field).
+        if (
+            tool_size is None
+            and torque is not None
+            and confidence >= _TOOL_SIZE_MISSING_WARN_CONFIDENCE
+        ):
+            _log.warning(
+                "extraction.tool_size_missing_high_conf",
+                query=query,
+                source_index=match.index,
+                confidence=confidence,
+                answer_text=answer_text[:_RAW_TEXT_LOG_LIMIT],
             )
 
         try:

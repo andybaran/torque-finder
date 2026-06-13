@@ -37,6 +37,22 @@ Rules:
    "11 N-m (97 in-lb)" or "40 N·m (354 in-lb)", return that whole string —
    do not convert, round, or reformat. Same for tool sizes ("5mm hex key",
    "T25 Torx", "7-8mm").
+3a. CAPTURE THE TOOL SIZE WHEN IT IS STATED. When a source EXPLICITLY states a
+   tool size or driver designation for the asked fastener — as text or a
+   legible icon/badge (e.g. "T25", "5 mm hex", "4mm", a "13 mm" crow's-foot
+   callout) — you MUST put it in the tool_size field, not only in the prose
+   answer. Include the drive type when the source gives it ("5 mm hex", not a
+   bare "5 mm"). If the source legibly states more than one driver for the SAME
+   bolt, you may give them together ("T25 / 4 mm hex"). Read driver icons and
+   badges next to the torque callout, not just body text.
+3b. NULL IS THE CORRECT ANSWER WHEN NO SIZE IS STATED. This is a peer rule to
+   3a, not a footnote: if the source does NOT explicitly state a size or
+   designation for the asked fastener — there is no tool, only an unlabeled
+   tool glyph whose size you cannot read, or the size simply is not given —
+   leave tool_size null. Do NOT infer, guess, or invent a plausible size to
+   satisfy 3a. A null tool_size for a genuinely unstated size is right; a
+   fabricated "5 mm hex" is a defect. Capture what is stated; never manufacture
+   what is not.
 4. If the answer is in one of the supplied sources, set source_index to that
    source's number.
 5. If the supplied sources do not contain the answer, return a low confidence
@@ -84,8 +100,15 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "tool_size": {
             "type": ["string", "null"],
             "description": (
-                "Tool size as written in the source (e.g. '5mm hex key', "
-                "'T25 Torx', '7-8mm'). Null if not applicable or not present."
+                "Tool size/driver as EXPLICITLY stated in the source for the "
+                "asked fastener (e.g. '5mm hex key', 'T25 Torx', '13 mm "
+                "crow's-foot', '7-8mm'). Include the drive type when the source "
+                "gives it ('5 mm hex', not bare '5 mm'). Populate this field — "
+                "do not fold a stated size into the prose answer alone. Null "
+                "ONLY when the source states no size for this fastener: either "
+                "no tool applies, or a tool is shown but its size/designation is "
+                "not legibly stated. Null is the correct answer when the size is "
+                "unstated — never invent or infer a plausible size to avoid null."
             ),
         },
         "torque": {
