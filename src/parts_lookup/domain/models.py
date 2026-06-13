@@ -28,6 +28,40 @@ class RetrievalSource(StrEnum):
     HYBRID = "hybrid"
 
 
+class ProductScope(_Frozen):
+    """The product/brand identity of a query or a document, deterministically derived.
+
+    Pure value object shared across the retrieval and extraction contexts (and,
+    per #28, the indexing context's ``product_family`` facet). It is produced by
+    the deterministic matcher in ``retrieval.product_match`` from free text — a
+    document title/filename or a mechanic's question — and carries NO model
+    judgment.
+
+    ``family`` is the normalized product family (e.g. ``"pike"``, ``"zeb"``,
+    ``"code"``); ``brand`` is the normalized brand (e.g. ``"rockshox"``,
+    ``"sram"``, ``"box"`` — brand is filled even for out-of-corpus brands so the
+    gate can recognize *that* a product was asked about). ``confidence`` is the
+    lexical-match strength: ``0.0`` means no product/brand was identified at all,
+    in which case the abstention gate degrades to a no-op (never a false
+    mismatch). The matcher is FAIL-SAFE: below its confidence bar it returns
+    ``family=None`` rather than guessing.
+    """
+
+    family: str | None = None
+    brand: str | None = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    @property
+    def is_identified(self) -> bool:
+        """True when this scope names a recognizable product or brand.
+
+        The abstention gate only engages when the *asked* scope is identified;
+        an unidentified query (no recognized family or brand) is a no-op so the
+        guard never over-abstains on an under-specified question.
+        """
+        return self.family is not None or self.brand is not None
+
+
 class SourceType(StrEnum):
     """Where indexed content came from: a manufacturer PDF or a digital (HTML) manual."""
 
@@ -126,13 +160,20 @@ class Answer(_Frozen):
     ``source_index`` is the 1-based index of the candidate (in the order they
     were supplied to the extractor) the model cited — the caller maps it back
     to the retrieval hit. Tool/torque strings preserve the manual's notation.
+
+    ``abstained`` is set when the safety gate declines to answer because the
+    queried product is not in the corpus (see #32). On abstention there is no
+    genuine source, so ``source_index`` is ``None`` (the caller must NOT surface
+    a wrong-product deep link), ``tool_size``/``torque`` are ``None``, and
+    ``confidence`` is clamped low.
     """
 
     text: str
     tool_size: str | None = None
     torque: str | None = None
-    source_index: int = Field(ge=1)
+    source_index: int | None = Field(default=None, ge=1)
     confidence: float = Field(ge=0.0, le=1.0)
+    abstained: bool = False
 
 
 class PublicationRef(_Frozen):

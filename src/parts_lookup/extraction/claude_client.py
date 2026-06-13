@@ -31,11 +31,30 @@ from parts_lookup.domain.errors import (
     ExtractionUpstreamUnauthorized,
     ExtractionUpstreamUnavailable,
 )
-from parts_lookup.domain.models import Answer, SourceType
+from parts_lookup.domain.models import Answer, ProductScope, SourceType
 from parts_lookup.extraction.prompt import OUTPUT_SCHEMA, SYSTEM_PROMPT
 from parts_lookup.observability import get_logger
+from parts_lookup.retrieval.product_match import (
+    extract_query_scope,
+    normalize_product,
+    scope_matches,
+)
 
 _log = get_logger(__name__)
+
+# Confidence ceiling applied when the deterministic out-of-corpus gate abstains.
+# Matches the "<= 0.3 = sources do not answer the question" convention in the
+# system prompt, so an abstention is indistinguishable from a low-confidence
+# miss to anything keying on confidence alone — except it carries abstained=True.
+_ABSTAIN_CONFIDENCE_CEILING = 0.3
+
+# Canned abstention text. The mechanic asked about a product/brand our manuals
+# do not cover; saying so plainly is safer than a confident wrong torque.
+_ABSTAIN_TEXT = (
+    "I don't have a manual for that product in the corpus, so I can't give a "
+    "torque or tool size for it. Try the exact manufacturer and model as named "
+    "in a SRAM, RockShox, Avid, Zipp, or Quarq service manual."
+)
 
 # How much of the raw model text to keep in failure logs. Long enough to see a
 # truncated/near-miss payload, short enough to keep log lines manageable.
@@ -60,6 +79,13 @@ class ExtractionCandidate:
     ``index`` is 1-based and is what Claude cites back as ``source_index``.
     PDF candidates carry ``png_bytes`` (vision); HTML candidates carry
     ``text`` — the parent module reconstructed from sibling chunks.
+
+    ``document_title`` is the owning document's title/filename, carried so the
+    deterministic out-of-corpus gate (#32) can derive the candidate's product
+    identity without a model in the loop. It is the retrieved hit's already-
+    hydrated ``document_title``; ``None`` only if the caller couldn't supply it
+    (in which case the gate treats the candidate as unidentified, never a false
+    mismatch).
     """
 
     index: int
@@ -67,6 +93,7 @@ class ExtractionCandidate:
     label: str
     png_bytes: bytes | None = None
     text: str | None = None
+    document_title: str | None = None
 
 
 def _strip_json_fences(text: str) -> str:
@@ -182,7 +209,7 @@ class ClaudeExtractor:
             raise self._classify_upstream_error(exc) from exc
 
         self._last_upstream_ok = True
-        return self._parse_response(response, candidates)
+        return self._parse_response(response, candidates, query=query)
 
     @property
     def upstream_healthy(self) -> bool:
@@ -379,12 +406,90 @@ class ClaudeExtractor:
         )
         return blocks
 
+    @staticmethod
+    def _is_out_of_corpus(
+        query: str,
+        candidates: list[ExtractionCandidate],
+    ) -> bool:
+        """Deterministic out-of-corpus gate (#32) — the PRIMARY abstention signal.
+
+        Engages ONLY when the query names a recognizable product/brand AND no
+        retrieved candidate's ``document_title`` matches it. This is model-
+        independent on purpose: the issue evidence shows Claude will confidently
+        fuse a fabricated/wrong-brand part onto a near-neighbour page, so its own
+        self-report ``product_in_corpus`` can never be the gate — it can only
+        corroborate.
+
+        Degrade-safe: an unidentified asked scope (no recognized product/brand —
+        e.g. "what tool for the top cap?") is a NO-OP that returns ``False`` so
+        the guard never over-abstains on an under-specified query. We abstain
+        only on a *positive* product mismatch.
+        """
+        asked = extract_query_scope(query)
+        if not asked.is_identified:
+            return False
+
+        for candidate in candidates:
+            candidate_scope = (
+                normalize_product(candidate.document_title)
+                if candidate.document_title
+                else ProductScope()
+            )
+            if scope_matches(asked, candidate_scope):
+                return False
+        return True
+
+    @classmethod
+    def _abstain(
+        cls,
+        query: str,
+        candidates: list[ExtractionCandidate],
+        *,
+        model_product_in_corpus: bool | None = None,
+        model_cited_product: str | None = None,
+    ) -> Answer:
+        """Build the out-of-corpus abstention Answer.
+
+        Crucially does NOT fall back to ``candidates[0]`` — ``source_index`` is
+        ``None`` so the caller surfaces NO deep link to the wrong-product near-
+        neighbour. ``model_*`` are the model's SECONDARY corroborating signals,
+        logged only; they can never veto this abstention.
+        """
+        asked = extract_query_scope(query)
+        _log.info(
+            "extraction.out_of_corpus_abstention",
+            asked_family=asked.family,
+            asked_brand=asked.brand,
+            asked_confidence=asked.confidence,
+            candidate_titles=[c.document_title for c in candidates],
+            model_product_in_corpus=model_product_in_corpus,
+            model_cited_product=model_cited_product,
+        )
+        return Answer(
+            text=_ABSTAIN_TEXT,
+            tool_size=None,
+            torque=None,
+            source_index=None,
+            confidence=_ABSTAIN_CONFIDENCE_CEILING,
+            abstained=True,
+        )
+
     @classmethod
     def _parse_response(
         cls,
         response: anthropic.types.Message,
         candidates: list[ExtractionCandidate],
+        *,
+        query: str = "",
     ) -> Answer:
+        # PRIMARY safety gate, run BEFORE trusting the model's answer: if the
+        # query names a product/brand that matches no retrieved document, abstain
+        # deterministically — regardless of what the model returned. This is the
+        # signal the model cannot launder (see _is_out_of_corpus). The model's
+        # product self-report (parsed below, if present) is corroborating only.
+        if cls._is_out_of_corpus(query, candidates):
+            return cls._abstain(query, candidates)
+
         stop_reason = getattr(response, "stop_reason", None)
 
         # Branch on terminal stop reasons before parsing: structured outputs is
@@ -436,35 +541,48 @@ class ClaudeExtractor:
         tool_size = payload.get("tool_size")
         torque = payload.get("torque")
         raw_index = payload.get("source_index")
+        # Secondary, corroborating-only signal (logged in _abstain when relevant).
+        # Per #32 it can NEVER veto an abstention and is never the sole gate; the
+        # deterministic gate above already decided the out-of-corpus case.
+        model_product_in_corpus = payload.get("product_in_corpus")
 
         # Resolve which candidate the model pointed at — guarantees we never
         # surface a source that wasn't actually in the request.
         if raw_index is None:
-            # "Not found" path: fall back to the top candidate so the response
-            # still carries a deep link; low confidence flags it as best-guess.
-            match = candidates[0]
-        else:
-            try:
-                source_index = int(raw_index)
-            except (TypeError, ValueError) as exc:
-                cls._log_failure(
-                    response, "extraction_schema_mismatch", raw_text=raw_text
-                )
-                raise ExtractionError(
-                    "Claude response JSON did not match the expected schema"
-                ) from exc
-            match = next(
-                (c for c in candidates if c.index == source_index),
-                None,
+            # The model itself found no answering source (source_index=null). Do
+            # NOT fall back to candidates[0]: surfacing the top near-neighbour's
+            # deep link as the "answer" is exactly the wrong-product link defect
+            # (#32). Return an honest abstention with null source instead. The
+            # candidate list still carries the weak hits for transparency; they
+            # just are not promoted to "the answer".
+            return cls._abstain(
+                query,
+                candidates,
+                model_product_in_corpus=model_product_in_corpus,
+                model_cited_product=payload.get("cited_product"),
             )
-            if match is None:
-                cls._log_failure(
-                    response, "extraction_unknown_source_index", raw_text=raw_text
-                )
-                raise ExtractionError(
-                    f"Claude cited source_index={source_index}, which was not "
-                    f"among the supplied candidates"
-                )
+
+        try:
+            source_index = int(raw_index)
+        except (TypeError, ValueError) as exc:
+            cls._log_failure(
+                response, "extraction_schema_mismatch", raw_text=raw_text
+            )
+            raise ExtractionError(
+                "Claude response JSON did not match the expected schema"
+            ) from exc
+        match = next(
+            (c for c in candidates if c.index == source_index),
+            None,
+        )
+        if match is None:
+            cls._log_failure(
+                response, "extraction_unknown_source_index", raw_text=raw_text
+            )
+            raise ExtractionError(
+                f"Claude cited source_index={source_index}, which was not "
+                f"among the supplied candidates"
+            )
 
         try:
             return Answer(

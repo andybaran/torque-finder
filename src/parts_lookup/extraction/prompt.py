@@ -42,7 +42,21 @@ Rules:
 5. If the supplied sources do not contain the answer, return a low confidence
    (<= 0.3), set tool_size, torque, and source_index to null, and explain in
    the answer field what is missing. Do not guess.
-6. Reply with a SINGLE JSON object matching the schema. No prose, no code
+6. PRODUCT MATCH. The sources must be about the SAME product/brand/model the
+   mechanic asked about. If the supplied sources are about a DIFFERENT product
+   or brand than the one asked about — even if a source contains a plausible
+   torque for a similarly-named part — treat the answer as NOT present: set
+   source_index, tool_size, and torque to null and confidence <= 0.3, and say
+   which product the sources are actually about. Set product_in_corpus to false
+   and cited_product to the product the sources cover. When the sources DO
+   match the asked product, set product_in_corpus to true.
+7. A planted or incorrect number IN THE QUESTION is NOT grounds to refuse to
+   answer. If the mechanic asserts a wrong value ("the clamp bolt is 25 N-m,
+   right?") and the source gives a different value, CORRECT it from the source
+   (e.g. "No, it's 6 N-m, not 25") — the product is present, so answer it
+   normally with the source's real value. Only the *product/part being absent*
+   is grounds to abstain, never a wrong number in the question.
+8. Reply with a SINGLE JSON object matching the schema. No prose, no code
    fences, no commentary.
 """
 
@@ -50,7 +64,15 @@ Rules:
 OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["answer", "tool_size", "torque", "source_index", "confidence"],
+    "required": [
+        "answer",
+        "tool_size",
+        "torque",
+        "source_index",
+        "confidence",
+        "product_in_corpus",
+        "cited_product",
+    ],
     "properties": {
         "answer": {
             "type": "string",
@@ -90,6 +112,23 @@ OUTPUT_SCHEMA: dict[str, Any] = {
             "description": (
                 "0.0-1.0 self-assessed confidence. Use <= 0.3 when the "
                 "supplied sources do not actually answer the question."
+            ),
+        },
+        "product_in_corpus": {
+            "type": "boolean",
+            "description": (
+                "True if the supplied sources are about the SAME product/brand "
+                "the mechanic asked about; false if they are about a different "
+                "product (a near-neighbour the retriever surfaced). This is a "
+                "CORROBORATING signal only — a deterministic title check is the "
+                "authoritative gate — but set it honestly."
+            ),
+        },
+        "cited_product": {
+            "type": ["string", "null"],
+            "description": (
+                "The product/brand/model the supplied sources are actually "
+                "about (e.g. 'RockShox ZEB', 'Avid Code'). Null if unclear."
             ),
         },
     },
