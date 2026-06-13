@@ -49,6 +49,10 @@ dev = [
 [project.scripts]
 parts-lookup = "parts_lookup.ingestion.cli:main"
 parts-lookup-discover = "parts_lookup.discovery.cli:main"
+# NOTE: the eval gate runner is intentionally NOT a [project.scripts] entry —
+# it lives under tests/ (not shipped in the wheel) so it stays out of the
+# runtime package, and a console-script wrapper cannot import tests.*. The one
+# command is: `uv run python -m tests.eval.run_eval` (gated by PARTS_EVAL_LIVE).
 
 [build-system]
 requires = ["hatchling"]
@@ -64,11 +68,19 @@ target-version = "py314"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Frozen, machine-mined eval data: long docling chunk_text lines (E501) and
+# foreign-language characters in the source manuals (RUF001/RUF003) are the
+# literal mined content, not hand-written code — preserve them verbatim.
+"tests/eval/ground_truth_sampled.py" = ["E501", "RUF001", "RUF003"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["eval: requires live API keys + DB; opt-in regression suite"]
+markers = [
+    "eval: requires live API keys + DB; opt-in PAID regression suite (gated by PARTS_EVAL_LIVE)",
+]
 
 [tool.mypy]
 python_version = "3.14"

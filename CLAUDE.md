@@ -163,6 +163,13 @@ Build the bounded contexts from the inside out, so each one is demoable before t
 7. **`observability.py`** + OTel instrumentation — add late enough that the shape is clear, early enough to be useful for debugging the above.
 8. **Eval harness** in `tests/eval/` — codify the `thoughts.md` ground truth as a pytest suite. Run on every change.
 
+### Quality eval gate (the fitness function)
+
+`tests/eval/` is the repeatable quality gate (issue #34): source-grounded grading + a 39-probe adversarial out-of-corpus suite, with recorded baselines (`tests/eval/baselines/`) so fixes show deltas. It is split so CI never spends money:
+
+- **Offline ($0, the CI gate):** the deterministic grader (`grading.py` — notation + unit-conversion equivalence, provenance, abstention) and metric aggregation (`metrics.py`) plus the frozen corpora are unit-tested in `tests/unit/test_eval_grading_offline.py` + `test_eval_metrics_offline.py`. No network, no keys, no DB. The grader is deliberately **deterministic, not an LLM judge** — adding an LLM judge would be a new-infrastructure decision requiring the three-alternatives interview (CLAUDE.md rule 1).
+- **Live (PAID, double-gated):** the sampled / adversarial / `thoughts.md` suites hit real Voyage + Claude (~$0.02/query, ~$2.5 a full run — once drained the Anthropic balance). They skip unless **both** the live env vars are present **and** `PARTS_EVAL_LIVE=1`. One command: `uv run python -m tests.eval.run_eval` (DRY by default; `PARTS_EVAL_LIVE=1` to actually pay). **Watch the Anthropic balance before any live eval; refreshing baselines is a separate, explicitly user-greenlit step.**
+
 ## Key external credentials (env vars)
 
 - `ANTHROPIC_API_KEY` — Claude Sonnet 4.6

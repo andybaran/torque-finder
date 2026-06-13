@@ -92,6 +92,25 @@ class RetrievedChunk(_Frozen):
     source: RetrievalSource
 
 
+class MinedChunk(_Frozen):
+    """A chunk surfaced by a maintenance text-pattern scan of the index.
+
+    Read model for the eval ground-truth miner (``tests/eval``): just enough of
+    a chunk to build a frozen ground-truth case — identity, the owning
+    document, where it sits, and the raw text the value is mined from. Carries
+    no embedding (the miner does not retrieve, it scans).
+    """
+
+    chunk_id: int
+    document_id: int
+    document_title: str
+    source_type: SourceType
+    ordinal: int
+    has_png: bool
+    source_url: str
+    text: str
+
+
 class Query(_Frozen):
     """A natural-language question from a mechanic."""
 

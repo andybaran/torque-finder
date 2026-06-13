@@ -30,6 +30,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from parts_lookup.domain.errors import IngestionError
 from parts_lookup.domain.models import (
     IndexedDocument,
+    MinedChunk,
     SourceType,
 )
 
@@ -202,6 +203,75 @@ class Repository:
             delete(Chunk).where(Chunk.document_id == document_id)
         )
         return result.rowcount
+
+    async def scan_chunks_matching(
+        self,
+        pattern: str,
+        *,
+        exclude_title_ilike: str | None = None,
+        per_document_limit: int = 4,
+        limit: int = 200,
+    ) -> Sequence[MinedChunk]:
+        """Read-only scan for chunks whose text matches a POSIX regex.
+
+        Maintenance support for the eval ground-truth miner (``tests/eval``):
+        returns up to ``per_document_limit`` matching chunks per document (lowest
+        ordinals first, for diversity), capped at ``limit`` total. Stays inside
+        the indexing bounded context so the miner never touches asyncpg directly.
+
+        ``pattern`` is a Postgres ``~*`` (case-insensitive POSIX) regex;
+        ``exclude_title_ilike`` drops documents whose title ILIKE-matches it
+        (e.g. ``'%catalog%'``).
+        """
+        ranked_query = (
+            select(
+                Chunk.id.label("chunk_id"),
+                Chunk.document_id,
+                Document.title,
+                Document.source_type,
+                Chunk.ordinal,
+                Chunk.png_r2_key,
+                Chunk.source_url,
+                Chunk.text,
+                func.row_number()
+                .over(partition_by=Chunk.document_id, order_by=Chunk.ordinal)
+                .label("rn"),
+            )
+            .join(Document, Document.id == Chunk.document_id)
+            .where(Chunk.text.op("~*")(pattern))
+        )
+        if exclude_title_ilike is not None:
+            ranked_query = ranked_query.where(~Document.title.ilike(exclude_title_ilike))
+        ranked = ranked_query.subquery()
+
+        result = await self._session.execute(
+            select(
+                ranked.c.chunk_id,
+                ranked.c.document_id,
+                ranked.c.title,
+                ranked.c.source_type,
+                ranked.c.ordinal,
+                ranked.c.png_r2_key,
+                ranked.c.source_url,
+                ranked.c.text,
+            )
+            .where(ranked.c.rn <= per_document_limit)
+            .order_by(ranked.c.rn, ranked.c.document_id)
+            .limit(limit)
+        )
+        return [
+            MinedChunk(
+                chunk_id=row.chunk_id,
+                document_id=row.document_id,
+                document_title=row.title,
+                source_type=SourceType(row.source_type),
+                ordinal=row.ordinal,
+                has_png=row.png_r2_key is not None,
+                source_url=row.source_url,
+                text=row.text,
+            )
+            for row in result
+        ]
 
     async def fetch_module_text(self, document_id: int, parent_anchor: str) -> str:
         """Reconstruct a module's full text from its sibling chunks, in order.

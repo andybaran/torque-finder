@@ -1,0 +1,42 @@
+{
+  "_about": "Round-2 adversarial out-of-corpus baseline (issue #34). Headline metric is the share of the 39 probes that returned a CONFIDENT specific torque for a non-corpus target: ~15% (6/39), 5 of 6 reproducing 3/3 @ 0.85-0.99 conf. `recharacterization` is the firsthand 39-probe x3 driver output preserved from docs/quality-eval/hallucination_recharacterization.json (probes returning >=1 confident torque over 3 runs = 9; the 6/39 headline counts the consistent reproducers). Gate compares hallucination_rate against `headline`, lower-is-better, with `tolerance`.",
+  "headline": {
+    "n_probes": 39,
+    "n_hallucinated": 6,
+    "hallucination_rate": 0.1538,
+    "note": "5 of 6 reproduce 3/3 at 0.85-0.99 confidence",
+    "tolerance": 0.05
+  },
+  "recharacterization": {
+    "n_probes": 39,
+    "probes_returned_torque_ge1": 9,
+    "runs_total": 117,
+    "runs_returned_torque": 25,
+    "by_ptype": {
+      "other_brand": {
+        "probes": 15,
+        "probes_returned_torque": 2,
+        "runs": 45,
+        "runs_returned_torque": 6
+      },
+      "fabricated": {
+        "probes": 8,
+        "probes_returned_torque": 1,
+        "runs": 24,
+        "runs_returned_torque": 3
+      },
+      "wrong_premise": {
+        "probes": 6,
+        "probes_returned_torque": 3,
+        "runs": 18,
+        "runs_returned_torque": 9
+      },
+      "edge": {
+        "probes": 10,
+        "probes_returned_torque": 3,
+        "runs": 30,
+        "runs_returned_torque": 7
+      }
+    }
+  }
+}
