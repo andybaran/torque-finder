@@ -86,26 +86,55 @@ def _print_dry() -> None:
     )
 
 
+def _grade_sampled(case, answer, chosen) -> GradedRecord:  # type: ignore[no-untyped-def]
+    """Pure grading of one sampled case → GradedRecord (offline-testable).
+
+    ``chosen`` is None on a #32 abstention (no cited source): that is a miss on
+    an answerable case — value may still appear in the abstain text, but with no
+    provenance it cannot pass, and the mode is recorded as ``abstained`` so the
+    histogram separates over-abstention from wrong values.
+    """
+    haystack = " | ".join(p for p in (answer.text, answer.torque) if p)
+    value_ok = value_matches(haystack, case.expected_torque)
+    prov_ok = (
+        provenance_ok(chosen.text, case.expected_torque) if chosen is not None else False
+    )
+    passed = value_ok and prov_ok
+    if passed:
+        failure_mode = "correct"
+    elif chosen is None:
+        failure_mode = "abstained"
+    elif not value_ok:
+        failure_mode = "wrong_value"
+    else:
+        failure_mode = "other"
+    return GradedRecord(
+        case_id=case.case_id,
+        passed=passed,
+        failure_mode=failure_mode,
+        retrieved_expected=prov_ok,
+    )
+
+
 async def _run_sampled() -> list[GradedRecord]:
     from tests.eval.test_eval_smoke import run_query
 
     records: list[GradedRecord] = []
     for case in SAMPLED_GROUND_TRUTH:
-        _hits, answer, chosen = await run_query(case.query)
-        haystack = " | ".join(p for p in (answer.text, answer.torque) if p)
-        value_ok = value_matches(haystack, case.expected_torque)
-        prov_ok = provenance_ok(chosen.text, case.expected_torque)
-        passed = value_ok and prov_ok
-        records.append(
-            GradedRecord(
-                case_id=case.case_id,
-                passed=passed,
-                failure_mode="correct"
-                if passed
-                else ("wrong_value" if not value_ok else "other"),
-                retrieved_expected=prov_ok,
+        try:
+            _hits, answer, chosen = await run_query(case.query)
+        except Exception as exc:  # one bad case must not abort the paid run
+            print(f"  [{case.case_id}] ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
+            records.append(
+                GradedRecord(
+                    case_id=case.case_id,
+                    passed=False,
+                    failure_mode="error",
+                    retrieved_expected=False,
+                )
             )
-        )
+            continue
+        records.append(_grade_sampled(case, answer, chosen))
     return records
 
 
@@ -114,7 +143,15 @@ async def _run_adversarial() -> list[ProbeRecord]:
 
     records: list[ProbeRecord] = []
     for probe in OUT_OF_CORPUS_PROBES:
-        _hits, answer, _chosen = await run_query(probe.question)
+        try:
+            _hits, answer, _chosen = await run_query(probe.question)
+        except Exception as exc:  # one bad probe must not abort the paid run
+            print(f"  [{probe.probe_id}] ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
+            # A probe we couldn't evaluate is not evidence of a hallucination.
+            records.append(
+                ProbeRecord(probe_id=probe.probe_id, ptype=probe.ptype, hallucinated=False)
+            )
+            continue
         records.append(
             ProbeRecord(
                 probe_id=probe.probe_id,

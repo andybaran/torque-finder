@@ -31,6 +31,11 @@ FAIL_MODES: tuple[str, ...] = (
     "missing_procedure_caveat",
     "http_502",
     "http_error",
+    # #46: the harness now distinguishes a #32 abstention on an answerable case
+    # ("abstained") and a case that errored during evaluation ("error") from the
+    # generic "other", so the histogram shows over-abstention vs. infra failures.
+    "abstained",
+    "error",
     "other",
     "skip",
 )

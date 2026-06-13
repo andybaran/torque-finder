@@ -103,6 +103,9 @@ async def run_query(question: str, top_k: int = 5):  # type: ignore[no-untyped-d
                             source_type=SourceType.PDF,
                             label=f"p. {hit.ordinal} of {hit.document_title}",
                             png_bytes=await _fetch_png(r2, hit.png_r2_key),
+                            # Mirror production (api/routes/query.py): the #32
+                            # deterministic product gate keys on document_title.
+                            document_title=hit.document_title,
                         )
                     )
                 else:
@@ -118,6 +121,7 @@ async def run_query(question: str, top_k: int = 5):  # type: ignore[no-untyped-d
                             source_type=SourceType.HTML,
                             label=module_text.split("\n", 1)[0][:80],
                             text=module_text,
+                            document_title=hit.document_title,
                         )
                     )
 
@@ -125,7 +129,13 @@ async def run_query(question: str, top_k: int = 5):  # type: ignore[no-untyped-d
     finally:
         await engine.dispose()
 
-    return hits, answer, hits[answer.source_index - 1]
+    # A #32 abstention has source_index=None — the model (or the deterministic
+    # gate) judged no supplied source answers the question. There is no chosen
+    # hit then; return None so callers can grade the abstention rather than
+    # crash on hits[None - 1]. Abstention is the correct outcome for the
+    # out-of-corpus adversarial probes.
+    chosen = hits[answer.source_index - 1] if answer.source_index is not None else None
+    return hits, answer, chosen
 
 
 def _case_params() -> list:  # type: ignore[type-arg]
@@ -146,6 +156,14 @@ async def test_ground_truth_case(case: GroundTruthCase) -> None:
     from parts_lookup.domain.models import SourceType
 
     _hits, answer, chosen = await run_query(case.query)
+
+    # A value-pinned ground-truth case has a real answer in the corpus, so an
+    # abstention (source_index=None → no chosen hit) is a genuine miss, not a
+    # crash. Fail clearly; known-red cases carry their xfail mark.
+    assert chosen is not None, (
+        f"[{case.case_id}] extraction abstained (source_index=None); expected "
+        f"an answer citing {(case.torque or case.tool_size)!r}"
+    )
 
     # --- value gate: the pinned tool/torque must appear in the answer. -----
     # combined_fields cases match against all answer fields together, so
