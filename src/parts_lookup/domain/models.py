@@ -115,7 +115,9 @@ class Query(_Frozen):
     """A natural-language question from a mechanic."""
 
     text: str = Field(min_length=1, max_length=2_000)
-    top_k: int = Field(default=3, ge=1, le=10)
+    # Default 5 (#29): over-fetch so a named doc that lands just below an
+    # identical-spec sibling still reaches extraction. See config.retrieval_top_k.
+    top_k: int = Field(default=5, ge=1, le=10)
 
 
 class Answer(_Frozen):

@@ -14,7 +14,10 @@ class TestQuery:
     def test_valid_minimum(self) -> None:
         q = Query(text="x")
         assert q.text == "x"
-        assert q.top_k == 3
+        # Default candidate depth raised 3 -> 5 in #29 (over-fetch so a named
+        # doc that fuses just below an identical-spec sibling still reaches
+        # extraction).
+        assert q.top_k == 5
 
     def test_text_empty_rejected(self) -> None:
         with pytest.raises(ValidationError):

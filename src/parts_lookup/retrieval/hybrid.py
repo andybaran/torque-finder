@@ -12,6 +12,7 @@ chance to win the fused ranking.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import bindparam, text
@@ -31,6 +32,36 @@ from parts_lookup.retrieval.vector import vector_search
 
 RRF_K: int = 60
 DEFAULT_TOP_K_PER_CHANNEL: int = 20
+
+# --- Stage-3 title rerank (#29) tuning knobs --------------------------------
+# When the query names a year/model ("2012 Monarch", "Vivid Air", "Lyrik")
+# that appears in a candidate's document_title, nudge that candidate up so the
+# *named* doc out-ranks identical-spec siblings that happen to fuse higher.
+#
+# Calibration is anchored to the RRF score scale. With RRF_K=60 the gap
+# between adjacent single-channel fused ranks is 1/(60+r) - 1/(60+r+1): near
+# the region where the named doc lands (issue #29 reports fused rank ~4-10)
+# that is ~2.1e-4 to ~2.4e-4. The named doc routinely sits a FEW such adjacent
+# gaps below an identical-spec sibling cluster, so:
+#   * TITLE_TOKEN_BOOST (per matched token) clears ~2 adjacent-rank gaps, so a
+#     single year/model match reliably breaks a real near-tie; and
+#   * TITLE_BOOST_CAP bounds the total to ~6 adjacent-rank gaps, so a title
+#     echoing many query tokens still cannot leapfrog a candidate that leads
+#     by a LARGE RRF margin (different channel, much higher rank). The boost
+#     only reorders a near-equal cluster — it never overrides strong evidence.
+TITLE_TOKEN_BOOST: float = 5.0e-4
+TITLE_BOOST_CAP: float = 1.5e-3
+
+# Tokens too generic to disambiguate a year/model — boosting on them would
+# reward noise, so they're dropped from the overlap set on both sides.
+_RERANK_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the", "a", "an", "and", "or", "of", "for", "to", "on", "in", "with",
+        "my", "what", "how", "do", "does", "i", "is", "it", "should", "user",
+        "manual", "guide", "torque", "spec", "specs", "bolt", "size", "tool",
+    }
+)
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 _LOAD_CHUNKS_SQL = text(
@@ -76,6 +107,53 @@ def _reciprocal_rank_fusion(
     )
 
 
+def _tokens(s: str) -> set[str]:
+    """Lowercase, split on non-alphanumerics, drop generic stopwords.
+
+    Years stay (e.g. "2012"), model names stay ("monarch", "lyrik"); the
+    common filler that every manual title and query shares is dropped so the
+    overlap signal reflects the *named* year/model, not boilerplate.
+    """
+    return {t for t in _TOKEN_RE.findall(s.lower()) if t not in _RERANK_STOPWORDS}
+
+
+def _title_boost(query_tokens: set[str], document_title: str) -> float:
+    """Bounded, additive boost for query/title token overlap.
+
+    ``TITLE_TOKEN_BOOST`` per shared token, capped at ``TITLE_BOOST_CAP``.
+    Pure function — no I/O — so it is unit-testable in isolation (#29 Test 2)
+    and triggers no new-infra interview.
+    """
+    if not query_tokens:
+        return 0.0
+    overlap = len(query_tokens & _tokens(document_title))
+    return min(overlap * TITLE_TOKEN_BOOST, TITLE_BOOST_CAP)
+
+
+def _rerank_by_title(
+    query_text: str,
+    fused: list[_FusedHit],
+    titles: dict[int, str],
+) -> list[_FusedHit]:
+    """Re-sort fused hits, adding a bounded title-overlap boost to each score.
+
+    Operates on the already-hydrated set (``titles`` keyed by chunk_id) so a
+    named year/model out-ranks an identical-spec sibling that fused slightly
+    higher — without ever leapfrogging a candidate far enough ahead that the
+    capped boost can't close the gap. ``score`` is left untouched on the
+    returned hits; only ordering changes. The sort is stable, so equal
+    boosted scores keep their RRF order (deterministic).
+    """
+    query_tokens = _tokens(query_text)
+    if not query_tokens:
+        return fused
+
+    def boosted(hit: _FusedHit) -> float:
+        return hit.score + _title_boost(query_tokens, titles.get(hit.chunk_id, ""))
+
+    return sorted(fused, key=boosted, reverse=True)
+
+
 async def hybrid_search(
     session: AsyncSession,
     embedder: VoyageEmbedder,
@@ -103,7 +181,10 @@ async def hybrid_search(
     except Exception as exc:
         raise RetrievalError("Hybrid retrieval channel failed") from exc
 
-    fused = _reciprocal_rank_fusion(keyword_hits, vector_hits)[:top_k]
+    # Hydrate the WHOLE over-fetched pool (not just the top_k) so the title
+    # rerank below has document_title for every candidate and can promote a
+    # named doc that fused at rank top_k+1..per_channel_k into the cut (#29).
+    fused = _reciprocal_rank_fusion(keyword_hits, vector_hits)
     if not fused:
         return []
 
@@ -115,6 +196,11 @@ async def hybrid_search(
         raise RetrievalError("Failed to load fused chunk rows") from exc
 
     rows = {int(row.chunk_id): row for row in result}
+
+    # Stage-3 bounded title rerank, THEN cut to top_k. The boost only breaks
+    # near-ties (see _title_boost), so a far-ahead candidate is never displaced.
+    titles = {cid: str(row.document_title) for cid, row in rows.items()}
+    fused = _rerank_by_title(query_text, fused, titles)[:top_k]
 
     retrieved: list[RetrievedChunk] = []
     for hit in fused:

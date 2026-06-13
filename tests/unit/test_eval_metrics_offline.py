@@ -22,6 +22,7 @@ from tests.eval.metrics import (
     aggregate_adversarial,
     compare_to_baseline,
     metrics_as_dict,
+    recall_at_k,
 )
 from tests.eval.probes_out_of_corpus import OUT_OF_CORPUS_PROBES
 
@@ -141,6 +142,38 @@ def test_out_of_corpus_probe_corpus_is_frozen_at_39() -> None:
     # ids are unique and stable
     assert len({p.probe_id for p in OUT_OF_CORPUS_PROBES}) == 39
     assert all(p.expected_behavior == "abstain" for p in OUT_OF_CORPUS_PROBES)
+
+
+def test_recall_at_k_aggregates_and_lists_misses() -> None:
+    per_case = {"a": True, "b": True, "c": False, "d": True}
+    m = recall_at_k(per_case, k=5)
+    assert m.k == 5
+    assert m.n == 4
+    assert m.n_recalled == 3
+    assert m.recall_at_k == pytest.approx(0.75)
+    assert m.missed_case_ids == ("c",)
+
+
+def test_recall_at_k_empty_is_zero_not_crash() -> None:
+    m = recall_at_k({}, k=3)
+    assert m.n == 0
+    assert m.recall_at_k == 0.0
+    assert m.missed_case_ids == ()
+
+
+def test_recall_ground_truth_pins_the_eight_evidence_cases() -> None:
+    from tests.eval.ground_truth_recall import RECALL_GROUND_TRUTH
+
+    assert len(RECALL_GROUND_TRUTH) == 8
+    assert len({c.case_id for c in RECALL_GROUND_TRUTH}) == 8
+    # Every case pins a value, a non-empty family token set, and names its doc.
+    for c in RECALL_GROUND_TRUTH:
+        assert c.recall_value
+        assert c.family_tokens
+        assert c.document_title.endswith(".pdf")
+        assert c.page_no > 0
+        # Family tokens must be lowercased (the matcher normalizes titles).
+        assert all(tok == tok.lower() for tok in c.family_tokens)
 
 
 def test_recorded_baselines_load_and_match_issue_headline() -> None:

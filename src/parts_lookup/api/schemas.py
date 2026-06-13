@@ -22,10 +22,13 @@ class QueryRequest(BaseModel):
         examples=["What torque should I use for the headset top cap bolt?"],
     )
     top_k: int = Field(
-        default=3,
+        default=5,
         ge=1,
         le=10,
-        description="Number of candidate pages to ask Claude about.",
+        description=(
+            "Number of candidate pages to ask Claude about. Default 5 (#29): "
+            "each candidate is one more PDF page image sent to Claude vision."
+        ),
     )
 
 
