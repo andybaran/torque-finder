@@ -20,10 +20,16 @@ from parts_lookup.api.dependencies import (
 )
 from parts_lookup.api.schemas import AnswerResponse, Candidate, QueryRequest
 from parts_lookup.assets.r2_client import R2Client
-from parts_lookup.domain.errors import ExtractionError, RetrievalError
+from parts_lookup.domain.errors import (
+    ExtractionError,
+    ExtractionUpstreamUnauthorized,
+    ExtractionUpstreamUnavailable,
+    RetrievalError,
+)
 from parts_lookup.domain.models import Query, RetrievedChunk, SourceType
 from parts_lookup.extraction.claude_client import ExtractionCandidate
 from parts_lookup.indexing.repository import Repository
+from parts_lookup.observability import capture_exception as _capture_exception
 from parts_lookup.observability import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +39,9 @@ router = APIRouter(prefix="/v1", tags=["query"])
 # Long-lived presigned URLs so a frontend can keep them on screen.
 _PRESIGN_TTL_SECONDS = 60 * 60
 _LABEL_MAX_CHARS = 80
+# Retry-After (seconds) sent on a transient extraction 503 when the upstream
+# response carried no Retry-After header of its own (e.g. a connection error).
+_DEFAULT_RETRY_AFTER = "5"
 
 
 @router.post("/query", response_model=AnswerResponse)
@@ -98,6 +107,28 @@ async def query(
 
     try:
         answer = await extractor.extract(body.question, candidates)
+    # Order matters: both upstream classes subclass ExtractionError, so the
+    # specific arms must precede the base arm. "Claude never answered"
+    # (upstream) → 503; "Claude answered wrong" (parse/format/stop_reason,
+    # #25's territory) → 502, unchanged.
+    except ExtractionUpstreamUnavailable as exc:
+        # Transient: tell the client to retry. Propagate the upstream
+        # Retry-After when we have it, else a sane default.
+        retry_after = exc.retry_after or _DEFAULT_RETRY_AFTER
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Answer service is temporarily unavailable; please retry.",
+            headers={"Retry-After": retry_after},
+        ) from exc
+    except ExtractionUpstreamUnauthorized as exc:
+        # Operator/code fault (billing/auth/permission/too-large): retrying
+        # won't help, but it must page on-call. Capture to Sentry; keep the
+        # client-facing detail generic (don't leak credit/auth specifics).
+        _capture_exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Answer service is temporarily unavailable.",
+        ) from exc
     except ExtractionError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

@@ -9,17 +9,28 @@ window.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from dataclasses import dataclass
 from typing import Any
 
 import anthropic
+
+# OverloadedError (529) and RequestTooLargeError (413) are NOT exported from the
+# top-level `anthropic` namespace in 0.97.0 (hasattr(anthropic, "OverloadedError")
+# is False); they live under the underscore-private `_exceptions`. This import
+# path is an SDK-bump risk — re-verify on any anthropic version bump.
+from anthropic._exceptions import OverloadedError, RequestTooLargeError
 from anthropic.types.json_output_format_param import JSONOutputFormatParam
 from anthropic.types.output_config_param import OutputConfigParam
 
 from parts_lookup.config import Settings
-from parts_lookup.domain.errors import ExtractionError
+from parts_lookup.domain.errors import (
+    ExtractionError,
+    ExtractionUpstreamUnauthorized,
+    ExtractionUpstreamUnavailable,
+)
 from parts_lookup.domain.models import Answer, SourceType
 from parts_lookup.extraction.prompt import OUTPUT_SCHEMA, SYSTEM_PROMPT
 from parts_lookup.observability import get_logger
@@ -29,6 +40,17 @@ _log = get_logger(__name__)
 # How much of the raw model text to keep in failure logs. Long enough to see a
 # truncated/near-miss payload, short enough to keep log lines manageable.
 _RAW_TEXT_LOG_LIMIT = 2000
+
+# Anthropic signals billing exhaustion as a 400 BadRequestError whose *body
+# message* contains this substring — there is no dedicated exception class for
+# it (verified against anthropic==0.97.0). Matching a substring is brittle if
+# Anthropic rewords it, so the full upstream message is always logged; any
+# BadRequestError that does NOT match this stays a base ExtractionError → 502.
+_CREDIT_BALANCE_MARKER = "credit balance is too low"
+
+# Retry-After to advertise when the upstream gave us none (e.g. a connection or
+# timeout failure has no HTTP response, so no header to propagate).
+_DEFAULT_RETRY_AFTER_SECONDS = "5"
 
 
 @dataclass(frozen=True)
@@ -70,11 +92,27 @@ class ClaudeExtractor:
     ) -> None:
         self._settings = settings
         self._stub = settings.stub_external_apis
+        # Cap concurrent vision calls so request bursts queue instead of
+        # stampeding Anthropic's rate limit (mirrors discovery/fetcher.py:45).
+        self._semaphore = asyncio.Semaphore(settings.extraction_max_concurrency)
+        # Cheap in-process readiness signal for /readyz: the outcome of the most
+        # recent *upstream* call. None until the first call. A transient/auth
+        # outage flips this False; the next success flips it back — so an
+        # uptime monitor stops reporting green during a full Anthropic outage
+        # WITHOUT spending a vision call per probe. Starts True so a freshly
+        # booted process is ready before it has served any traffic.
+        self._last_upstream_ok = True
         if self._stub:
             self._client: anthropic.AsyncAnthropic | None = None
         else:
+            # max_retries + timeout use the SDK's built-in bounded exponential
+            # backoff (honors Retry-After) — no extra dependency. An injected
+            # client (tests) is used as-is so its retry behavior stays under the
+            # test's control.
             self._client = client or anthropic.AsyncAnthropic(
-                api_key=settings.anthropic_api_key.get_secret_value()
+                api_key=settings.anthropic_api_key.get_secret_value(),
+                max_retries=settings.extraction_max_retries,
+                timeout=settings.extraction_timeout_seconds,
             )
 
     async def extract(
@@ -117,27 +155,171 @@ class ClaudeExtractor:
         }
 
         try:
-            response = await self._client.messages.create(
-                model=self._settings.anthropic_model,
-                max_tokens=self._settings.extraction_max_tokens,
-                system=[
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[{"role": "user", "content": user_blocks}],
-                output_config=output_config,
-            )
+            # The semaphore caps how many vision calls are in flight at once so
+            # a burst queues here rather than stampeding Anthropic's rate limit
+            # (mirrors discovery/fetcher.py's pattern). The SDK retries
+            # transient failures internally per `max_retries`, honoring
+            # Retry-After — so by the time an exception escapes here the
+            # transient class is genuinely unrecoverable, not a first blip.
+            async with self._semaphore:
+                response = await self._client.messages.create(
+                    model=self._settings.anthropic_model,
+                    max_tokens=self._settings.extraction_max_tokens,
+                    system=[
+                        {
+                            "type": "text",
+                            "text": SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    messages=[{"role": "user", "content": user_blocks}],
+                    output_config=output_config,
+                )
         except anthropic.APIError as exc:
-            # #33 will split this block by error type (throttling/billing vs.
-            # other upstream failures). Keep the single ExtractionError mapping
-            # for now so that path stays the clean "Claude never answered"
-            # (upstream) signal, distinct from the parse failures below.
-            raise ExtractionError("Claude API call failed") from exc
+            # The upstream call itself failed → not ready. (Parse failures below
+            # are NOT counted: Claude answered, so the upstream is up.)
+            self._last_upstream_ok = False
+            raise self._classify_upstream_error(exc) from exc
 
+        self._last_upstream_ok = True
         return self._parse_response(response, candidates)
+
+    @property
+    def upstream_healthy(self) -> bool:
+        """Whether the most recent upstream call succeeded (for /readyz).
+
+        Cheap and lock-free: a single bool reflecting the last outcome. It can
+        lag a just-started outage by one request window — acceptable for an
+        uptime monitor (documented in the /readyz route). In stub mode there is
+        no upstream, so this stays True.
+        """
+        return self._last_upstream_ok
+
+    @classmethod
+    def _classify_upstream_error(cls, exc: anthropic.APIError) -> ExtractionError:
+        """Map a raw Anthropic SDK error into a typed, logged domain error.
+
+        Order is load-bearing. ``OverloadedError`` (529) is a *sibling* of
+        ``InternalServerError`` — NOT a subclass — and ``InternalServerError``
+        is the generic ``>=500`` fallback. So 529 must be caught BEFORE the
+        ``InternalServerError``/``APIError`` arms, or a real overload falls
+        through to the base class and is misreported as a 502 parse failure
+        (the exact bug this issue exists to kill).
+
+        Returns the domain error to ``raise ... from exc`` at the call site so
+        the original SDK exception stays chained for the traceback.
+        """
+        status_code = getattr(exc, "status_code", None)
+        request_id = getattr(exc, "request_id", None)
+
+        # --- Transient (retryable) → ExtractionUpstreamUnavailable → 503 ---
+        if isinstance(exc, OverloadedError | anthropic.RateLimitError):
+            retry_after = cls._retry_after_from(exc)
+            cls._log_upstream_failure(exc, status_code, request_id, retry_after)
+            return ExtractionUpstreamUnavailable(
+                "Anthropic is temporarily unavailable "
+                f"({type(exc).__name__}, status={status_code})",
+                status_code=status_code,
+                request_id=request_id,
+                retry_after=retry_after,
+            )
+        # APITimeoutError subclasses APIConnectionError; neither carries an HTTP
+        # response, so status_code/request_id are None here — hence the
+        # None-guard above via getattr. Advertise a default Retry-After.
+        if isinstance(exc, anthropic.APIConnectionError):
+            cls._log_upstream_failure(
+                exc, status_code, request_id, _DEFAULT_RETRY_AFTER_SECONDS
+            )
+            return ExtractionUpstreamUnavailable(
+                f"Could not reach Anthropic ({type(exc).__name__})",
+                status_code=status_code,
+                request_id=request_id,
+                retry_after=_DEFAULT_RETRY_AFTER_SECONDS,
+            )
+
+        # --- Operator/code-fault (NOT retryable) → Unauthorized → 503 + Sentry ---
+        if isinstance(
+            exc,
+            anthropic.AuthenticationError
+            | anthropic.PermissionDeniedError
+            | RequestTooLargeError,
+        ):
+            cls._log_upstream_failure(exc, status_code, request_id, None)
+            return ExtractionUpstreamUnauthorized(
+                "Anthropic rejected the request "
+                f"({type(exc).__name__}, status={status_code})",
+                status_code=status_code,
+                request_id=request_id,
+            )
+        # Billing exhaustion is a 400 whose *body message* says the credit
+        # balance is too low — no dedicated class. A 400 that does NOT match
+        # stays a base ExtractionError (→502): it's our request shape, not an
+        # operator fault we can page on.
+        if isinstance(exc, anthropic.BadRequestError):
+            if _CREDIT_BALANCE_MARKER in str(exc).lower():
+                cls._log_upstream_failure(exc, status_code, request_id, None)
+                return ExtractionUpstreamUnauthorized(
+                    "Anthropic credit balance is exhausted",
+                    status_code=status_code,
+                    request_id=request_id,
+                )
+            cls._log_upstream_failure(exc, status_code, request_id, None)
+            return ExtractionError(
+                f"Anthropic rejected the request as malformed (status={status_code})"
+            )
+
+        # --- 5xx fallback (500/502/503/504) → transient → 503 ---
+        if isinstance(exc, anthropic.InternalServerError):
+            cls._log_upstream_failure(
+                exc, status_code, request_id, _DEFAULT_RETRY_AFTER_SECONDS
+            )
+            return ExtractionUpstreamUnavailable(
+                f"Anthropic server error (status={status_code})",
+                status_code=status_code,
+                request_id=request_id,
+                retry_after=_DEFAULT_RETRY_AFTER_SECONDS,
+            )
+
+        # --- Anything else: an APIError we did not classify → base → 502 ---
+        cls._log_upstream_failure(exc, status_code, request_id, None)
+        return ExtractionError(f"Anthropic API call failed ({type(exc).__name__})")
+
+    @staticmethod
+    def _retry_after_from(exc: anthropic.APIError) -> str | None:
+        """Propagate the upstream ``Retry-After`` header when present.
+
+        Present on RateLimitError / OverloadedError responses; absent on
+        connection/timeout errors (no HTTP response at all).
+        """
+        response = getattr(exc, "response", None)
+        if response is None:
+            return None
+        header: str | None = response.headers.get("retry-after")
+        return header
+
+    @staticmethod
+    def _log_upstream_failure(
+        exc: anthropic.APIError,
+        status_code: int | None,
+        request_id: str | None,
+        retry_after: str | None,
+    ) -> None:
+        """Emit the structured ``extraction.upstream_failure`` log line.
+
+        This is the on-call's primary signal in Grafana (the failure-rate alert
+        keys off it) and closes the "raw upstream cause was never logged" gap.
+        Sibling to ``_log_failure`` (the parse-path logger #25 added). The full
+        upstream message is logged verbatim so a reworded billing string is
+        still visible even when the substring match misses.
+        """
+        _log.error(
+            "extraction.upstream_failure",
+            error_class=type(exc).__name__,
+            status_code=status_code,
+            request_id=request_id,
+            retry_after=retry_after,
+            upstream_message=str(exc),
+        )
 
     @staticmethod
     def _build_user_blocks(
