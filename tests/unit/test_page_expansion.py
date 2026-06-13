@@ -238,6 +238,162 @@ def test_rerank_only_touches_leader_doc() -> None:
     assert [h.chunk_id for h in out] == [1, 2]  # doc2 not boosted across docs
 
 
+# --- Budget 10 (#49): larger page budget, round-trip still holds ------------
+
+
+def test_budget_10_fits_more_neighbors_and_keeps_base_first() -> None:
+    """At the #49 budget of 10, a leader doc with many neighbors fits more of
+    them than the old budget of 6 — but base pages still come first and are
+    never evicted."""
+    mod = _hybrid()
+    base = [
+        mod._FusedHit(chunk_id=10, score=0.050),  # leader, doc1 p20
+        mod._FusedHit(chunk_id=21, score=0.040),  # doc2
+        mod._FusedHit(chunk_id=31, score=0.030),  # doc3
+    ]
+    # Leader-doc neighbors at distances 1..4 either side of anchor page 20.
+    neighbors = [
+        _meta(mod, 10, 1, 20),  # anchor (dedup)
+        _meta(mod, 9, 1, 19),
+        _meta(mod, 11, 1, 21),
+        _meta(mod, 8, 1, 18),
+        _meta(mod, 12, 1, 22),
+        _meta(mod, 7, 1, 17),
+        _meta(mod, 13, 1, 23),
+        _meta(mod, 6, 1, 16),
+        _meta(mod, 14, 1, 24),
+    ]
+    out = mod._assemble_candidates(
+        base=base, neighbors=neighbors, anchor_ordinal=20, anchor_score=0.050, max_candidates=10
+    )
+    ids = [h.chunk_id for h in out]
+    assert ids[:3] == [10, 21, 31]  # base first, unreordered
+    assert len(ids) == 10
+    # 7 neighbor slots filled closest-first: 19,21 (d1) | 18,22 (d2) | 17,23 (d3) | 16 (d4)
+    assert ids[3:] == [9, 11, 8, 12, 7, 13, 6]
+    assert 14 not in ids  # farthest (d4 high side) dropped at the cap
+
+
+def test_source_index_round_trip_at_budget_10() -> None:
+    """The #30 round-trip contract still holds at the #49 budget of 10: base
+    positions map 1:1 after the (larger) append window."""
+    mod = _hybrid()
+    base = [
+        mod._FusedHit(chunk_id=10, score=0.030),  # leader doc1 p5
+        mod._FusedHit(chunk_id=21, score=0.020),  # doc2
+        mod._FusedHit(chunk_id=31, score=0.010),  # doc3
+        mod._FusedHit(chunk_id=41, score=0.005),  # doc4
+    ]
+    pre_positions = {hit.chunk_id: i for i, hit in enumerate(base)}
+    neighbors = [_meta(mod, 9, 1, 4), _meta(mod, 11, 1, 6)]
+    out = mod._assemble_candidates(
+        base=base, neighbors=neighbors, anchor_ordinal=5, anchor_score=0.030, max_candidates=10
+    )
+    for chunk_id, pre_idx in pre_positions.items():
+        source_index = pre_idx + 1
+        assert out[source_index - 1].chunk_id == chunk_id
+
+
+# --- Page-budget drop log fires (#49) ---------------------------------------
+
+
+class _FakeRow:
+    def __init__(self, **kw: object) -> None:
+        self.__dict__.update(kw)
+
+
+def _chunk_row(mod, chunk_id, document_id, ordinal, text="t"):  # type: ignore[no-untyped-def]
+    return _FakeRow(
+        chunk_id=chunk_id,
+        document_id=document_id,
+        ordinal=ordinal,
+        text=text,
+        png_r2_key=f"pdfs/{document_id}/{ordinal}.png",
+        anchor=None,
+        parent_anchor=None,
+        source_url=f"pdfs/{document_id}.pdf#page={ordinal}",
+        source_type="pdf",
+        document_title=f"doc{document_id}.pdf",
+        document_source_url=f"pdfs/{document_id}.pdf",
+        product_family=None,
+        brand=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_page_budget_drop_log_fires_with_correct_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the leading doc's pages + neighbors exceed the budget, hybrid_search
+    emits `retrieval.page_budget_drop` with the right n_dropped. Drives the real
+    hybrid_search over a fake session + mocked channels (no DB, no network)."""
+    import structlog
+
+    from parts_lookup.retrieval import hybrid as mod
+
+    # Leading doc 1 with pages at ordinals 5..16 (12 base pages, all doc 1) so
+    # the budget of 4 must drop 12 - 4 = 8 base-truncation + neighbor pages.
+    # Use a small budget to force drops deterministically with few rows.
+    base_chunks = [(cid, 1, cid) for cid in range(5, 13)]  # 8 pages of doc 1
+    chunk_rows = {cid: _chunk_row(mod, cid, doc, ordn) for cid, doc, ordn in base_chunks}
+    # Neighbors of the anchor (the lowest-id top-RRF page → chunk 5, ordinal 5):
+    # ordinals 4,5,6 within window 1 → chunk 4 (ord 4) is a NEW neighbor page.
+    neighbor_rows = {4: _chunk_row(mod, 4, 1, 4)}
+
+    async def fake_keyword(_session, _q, _k):  # type: ignore[no-untyped-def]
+        return [(cid, 1.0 / i) for i, (cid, _d, _o) in enumerate(base_chunks, start=1)]
+
+    async def fake_vector(_session, _vec, _k):  # type: ignore[no-untyped-def]
+        return [(cid, 1.0 / i) for i, (cid, _d, _o) in enumerate(base_chunks, start=1)]
+
+    monkeypatch.setattr(mod, "keyword_search", fake_keyword)
+    monkeypatch.setattr(mod, "vector_search", fake_vector)
+
+    class _FakeResult:
+        def __init__(self, rows):  # type: ignore[no-untyped-def]
+            self._rows = rows
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            return iter(self._rows)
+
+    class _FakeSession:
+        async def execute(self, statement, params=None):  # type: ignore[no-untyped-def]
+            # The neighbor query binds :doc_id; the chunk-load query binds chunk_ids.
+            if params and "doc_id" in params:
+                lo, hi = params["lo"], params["hi"]
+                return _FakeResult(
+                    [r for cid, r in neighbor_rows.items() if lo <= r.ordinal <= hi]
+                )
+            ids = params["chunk_ids"]
+            return _FakeResult([chunk_rows[cid] for cid in ids if cid in chunk_rows])
+
+    class _FakeEmbedder:
+        async def embed_query(self, _text):  # type: ignore[no-untyped-def]
+            return [0.0] * 8
+
+    with structlog.testing.capture_logs() as logs:
+        out = await mod.hybrid_search(
+            session=_FakeSession(),
+            embedder=_FakeEmbedder(),
+            query_text="nut torque",
+            top_k=5,
+            per_channel_k=20,
+            page_window=1,
+            max_candidates=4,
+        )
+
+    assert len(out) == 4  # capped at the budget
+    drops = [e for e in logs if e.get("event") == "retrieval.page_budget_drop"]
+    assert len(drops) == 1
+    drop = drops[0]
+    assert drop["document_id"] == 1
+    assert drop["budget"] == 4
+    assert drop["n_kept"] == 4
+    # Considered = 5 base winners (top_k=5 from doc 1) + neighbor chunk 4 = 6
+    # unique; kept = 4 → dropped = 2.
+    assert drop["n_dropped"] == 2
+
+
 # --- HTML leader → no ordinal-window expansion ------------------------------
 
 

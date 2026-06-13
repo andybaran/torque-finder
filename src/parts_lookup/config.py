@@ -41,12 +41,19 @@ class Settings(BaseSettings):
     # document, anchored on its highest-fused page, adding `±retrieval_page_window`
     # neighbor pages (ordinal ± W) so the answer-bearing page reaches Claude.
     retrieval_page_window: int = Field(default=1, ge=0, le=3)
-    # Hard page budget: the maximum candidates (pages) sent to Claude vision per
-    # query, AFTER neighbor expansion. Decouples "documents to consider"
-    # (`retrieval_top_k`) from "pages sent to Claude" so expansion cost stays
-    # bounded. Base fused-winner pages are never evicted; neighbors are appended
-    # closest-to-anchor-first and dropped farthest-first when over budget.
-    retrieval_max_candidates: int = Field(default=6, ge=1, le=10)
+    # Doc-level page budget (#49, was #30): the maximum candidates (pages) sent
+    # to Claude vision per query, AFTER leading-doc neighbor expansion. Decouples
+    # "documents to consider" (`retrieval_top_k`) from "pages sent to Claude" so
+    # expansion cost stays bounded. Raised 6 -> 10 (#49): #48 measured the
+    # bottleneck as within-document page localization on the leading manual we
+    # already pick (doc-recall ~52%, page-recall ~18%), so spending a larger page
+    # budget on the ONE leading doc's pages is the single biggest lever to get
+    # the answer-bearing page in front of Claude. ~10 PDF pages ≈ ~$0.05/query ≈
+    # ~$0.50/mo at ~10 q/day, inside the CLAUDE.md ~$10/mo Claude budget. Base
+    # fused-winner pages are never evicted; neighbors are appended
+    # closest-to-anchor-first and dropped farthest-first when over budget (a
+    # `retrieval.page_budget_drop` log fires when any page is dropped at the cap).
+    retrieval_max_candidates: int = Field(default=10, ge=1, le=10)
     # When true, VoyageEmbedder + ClaudeExtractor return deterministic
     # canned data instead of calling the real APIs. Local-smoke-test only.
     stub_external_apis: bool = False

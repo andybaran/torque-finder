@@ -185,6 +185,16 @@ async def query(
     source_url = chosen_candidate.source_url
     screenshot_url = chosen_candidate.screenshot_url
 
+    # Doc-level best-effort citation (#49): the common case is a page-pinned PDF
+    # (Claude cited the page it read → keep the #page=N link + screenshot above).
+    # But when a chosen PDF candidate carries no page screenshot, no #page link
+    # can be honestly formed, so fall back to a DOCUMENT-level citation — the
+    # original PDF without a #page fragment, screenshot null. We always cite the
+    # document; the page link is best-effort. (HTML already carries its own
+    # complete deep link and no screenshot, so it is left untouched.)
+    if chosen.source_type is SourceType.PDF and chosen.png_r2_key is None:
+        source_url, screenshot_url = await _doc_level_links(r2, chosen)
+
     return AnswerResponse(
         answer=answer.text,
         tool_size=answer.tool_size,
@@ -235,6 +245,17 @@ async def _source_links(r2: R2Client, hit: RetrievedChunk) -> tuple[str, str | N
     pdf_url = await _resolve_url(r2, hit.document_source_url)
     screenshot = await _resolve_url(r2, hit.png_r2_key) if hit.png_r2_key else None
     return f"{pdf_url}#page={hit.ordinal}", screenshot
+
+
+async def _doc_level_links(r2: R2Client, hit: RetrievedChunk) -> tuple[str, None]:
+    """Document-level citation for a PDF hit: original PDF URL, NO #page, no screenshot.
+
+    The best-effort fallback (#49) when a page-pinned citation can't be formed
+    (the chosen PDF candidate has no rendered page screenshot). We still cite the
+    manual — just at document granularity — rather than fabricating a #page link
+    or dropping the citation entirely.
+    """
+    return await _resolve_url(r2, hit.document_source_url), None
 
 
 async def _fetch_png(r2: R2Client, key: str) -> bytes:

@@ -72,17 +72,22 @@ class AnswerResponse(BaseModel):
     source_url: str | None = Field(
         default=None,
         description=(
-            "Deep link to the source: the original PDF with a #page=N fragment, "
-            "or the docs.sram.com publication with a #section hash. Null on "
-            "abstention (no genuine source to link to)."
+            "Link to the source. Page-pinned when Claude cites a specific PDF "
+            "page (the common case): the original PDF with a #page=N fragment, "
+            "or the docs.sram.com publication with a #section hash. Doc-level "
+            "best-effort otherwise (#49): the original PDF WITHOUT a #page "
+            "fragment when no page can be honestly pinned — the document is "
+            "always cited even when the exact page can't be. Null on abstention "
+            "(no genuine source to link to)."
         ),
     )
     screenshot_url: str | None = Field(
         default=None,
         description=(
             "URL (public or presigned) to the rendered PNG of the source page. "
-            "Null for HTML sources — the deep link is the source reference — "
-            "and null on abstention."
+            "Present when a PDF page is pinned; null for HTML sources — the deep "
+            "link is the source reference — null for a doc-level best-effort "
+            "citation with no pinned page (#49), and null on abstention."
         ),
     )
 

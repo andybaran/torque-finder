@@ -32,9 +32,9 @@ if _missing:
         allow_module_level=True,
     )
 
-from tests.eval.grading import provenance_ok, value_matches  # noqa: E402
 from tests.eval.ground_truth_sampled import SAMPLED_GROUND_TRUTH  # noqa: E402
 from tests.eval.metrics import GradedRecord, aggregate, metrics_as_dict  # noqa: E402
+from tests.eval.run_eval import _grade_sampled  # noqa: E402
 from tests.eval.test_eval_smoke import run_query  # noqa: E402
 
 pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
@@ -43,17 +43,11 @@ _BASELINE = Path(__file__).resolve().parent / "baselines" / "round1_sampled.json
 
 
 async def _grade_one(case) -> GradedRecord:  # type: ignore[no-untyped-def]
+    # Reuse the single doc-level grader (#49): headline pass = value-correct AND
+    # right manual cited; doc+page precision is the secondary metric. Keeping one
+    # grader means the live sampled gate and the run_eval harness can't diverge.
     _hits, answer, chosen = await run_query(case.query)
-    haystack = " | ".join(p for p in (answer.text, answer.torque) if p)
-    value_ok = value_matches(haystack, case.expected_torque)
-    prov_ok = provenance_ok(chosen.text, case.expected_torque)
-    passed = value_ok and prov_ok
-    return GradedRecord(
-        case_id=case.case_id,
-        passed=passed,
-        failure_mode="correct" if passed else ("wrong_value" if not value_ok else "other"),
-        retrieved_expected=prov_ok,
-    )
+    return _grade_sampled(case, answer, chosen)
 
 
 async def test_sampled_pass_rate_meets_baseline() -> None:
