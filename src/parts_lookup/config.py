@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # --- Anthropic ---
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_model: str = "claude-sonnet-4-6"
+    # Output-token ceiling for the extraction call. A vision answer that echoes
+    # verbatim multi-unit torque strings plus the JSON envelope can exceed the
+    # old 1024 limit and truncate mid-object (see #25 eval cases 1065/1294).
+    # Tunable without a redeploy via EXTRACTION_MAX_TOKENS.
+    extraction_max_tokens: int = Field(default=2048, ge=256, le=8192)
 
     # --- Voyage ---
     voyage_api_key: SecretStr = SecretStr("")
