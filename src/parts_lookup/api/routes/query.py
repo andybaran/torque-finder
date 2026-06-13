@@ -101,6 +101,7 @@ async def query(
                     source_type=SourceType.PDF,
                     label=_pdf_label(hit),
                     png_bytes=png,
+                    document_title=hit.document_title,
                 )
             )
         else:
@@ -111,6 +112,7 @@ async def query(
                     source_type=SourceType.HTML,
                     label=_html_label(module_text, hit),
                     text=module_text,
+                    document_title=hit.document_title,
                 )
             )
 
@@ -157,6 +159,25 @@ async def query(
             )
         )
 
+    # Abstention (#32): the queried product is not in the corpus (or no source
+    # answered). There is NO genuine source, so do NOT promote a near-neighbour
+    # candidate's deep link to "the answer" — return null links + abstained=True.
+    # The candidates list still carries the weak hits for transparency. We skip
+    # the `chosen = retrieved[source_index - 1]` lookup entirely, since
+    # source_index is None on abstention.
+    if answer.abstained or answer.source_index is None:
+        return AnswerResponse(
+            answer=answer.text,
+            tool_size=answer.tool_size,
+            torque=answer.torque,
+            confidence=answer.confidence,
+            abstained=True,
+            source_type=None,
+            source_url=None,
+            screenshot_url=None,
+            candidates=response_candidates,
+        )
+
     # The extractor guarantees source_index maps to a supplied candidate;
     # reuse that candidate's already-built links rather than recomputing them.
     chosen = retrieved[answer.source_index - 1]
@@ -169,6 +190,7 @@ async def query(
         tool_size=answer.tool_size,
         torque=answer.torque,
         confidence=answer.confidence,
+        abstained=False,
         source_type=chosen.source_type.value,
         source_url=source_url,
         screenshot_url=screenshot_url,

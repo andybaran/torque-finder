@@ -126,7 +126,10 @@ class TestParseResponse:
         assert answer.source_index == 2
         assert answer.torque == "40 N·m (354 in-lb)"
 
-    def test_null_source_index_falls_back_to_top_candidate(self) -> None:
+    def test_null_source_index_abstains_without_wrong_link(self) -> None:
+        """#32: a model source_index=null no longer falls back to candidates[0]
+        (which surfaced a wrong-product deep link). It abstains honestly:
+        null source_index, null tool/torque, abstained=True, low confidence."""
         answer = ClaudeExtractor._parse_response(
             _response(
                 {
@@ -139,7 +142,11 @@ class TestParseResponse:
             ),
             self._CANDIDATES,
         )
-        assert answer.source_index == 1
+        assert answer.source_index is None
+        assert answer.abstained is True
+        assert answer.tool_size is None
+        assert answer.torque is None
+        assert answer.confidence <= 0.3
 
     def test_unknown_source_index_rejected(self) -> None:
         with pytest.raises(ExtractionError):
@@ -155,6 +162,184 @@ class TestParseResponse:
                 ),
                 self._CANDIDATES,
             )
+
+
+class TestOutOfCorpusGate:
+    """#32: the deterministic, model-independent out-of-corpus abstention gate.
+
+    The gate keys on a title-derived product match (extract_query_scope(query)
+    against normalize_product(candidate.document_title)), NOT on Claude's
+    self-report. These prove the wiring + the gate's truth table with a mock.
+    """
+
+    @staticmethod
+    def _candidate(
+        index: int, title: str, *, source_type: SourceType = SourceType.PDF
+    ) -> ExtractionCandidate:
+        if source_type is SourceType.PDF:
+            return ExtractionCandidate(
+                index=index,
+                source_type=SourceType.PDF,
+                label=f"p. 1 of {title}",
+                png_bytes=b"\x89PNG fake",
+                document_title=title,
+            )
+        return ExtractionCandidate(
+            index=index,
+            source_type=SourceType.HTML,
+            label=title,
+            text="some module text",
+            document_title=title,
+        )
+
+    @staticmethod
+    def _model_answer(
+        *,
+        torque: str | None,
+        source_index: int | None,
+        confidence: float,
+        product_in_corpus: bool = True,
+        cited_product: str | None = None,
+    ) -> SimpleNamespace:
+        return _response(
+            {
+                "answer": "some answer",
+                "tool_size": None,
+                "torque": torque,
+                "source_index": source_index,
+                "confidence": confidence,
+                "product_in_corpus": product_in_corpus,
+                "cited_product": cited_product,
+            }
+        )
+
+    def test_brand_mismatch_abstains_deterministically(self) -> None:
+        """Box (out-of-corpus brand) asked; candidates are RockShox/Avid titles
+        → no title matches → abstain, regardless of the model answering."""
+        candidates = [
+            self._candidate(1, "2014-2017-pike-service-manual.pdf"),
+            self._candidate(2, "2012-avid-code-and-code-r-service-manual.pdf"),
+        ]
+        # The model confidently fabricates a torque from a near-neighbour page.
+        response = self._model_answer(
+            torque="11 N-m (97 in-lb)", source_index=1, confidence=0.9
+        )
+        answer = ClaudeExtractor._parse_response(
+            response,
+            candidates,
+            query="Box Three rear derailleur b-bolt torque?",
+        )
+        assert answer.abstained is True
+        assert answer.source_index is None
+        assert answer.torque is None
+        assert answer.tool_size is None
+        assert answer.confidence <= 0.3
+
+    def test_self_report_true_cannot_launder_a_brand_mismatch(self) -> None:
+        """The 'Zeb plasma damper' failure shape: the model emits
+        product_in_corpus=true (laundering the hallucination). For a BRAND
+        mismatch the DETERMINISTIC gate must still abstain — proving the model
+        self-report is NOT the gate. (Zeb-family probes are an acknowledged
+        out-of-reach limit; this asserts the gate's class: Hayes here.)"""
+        candidates = [
+            self._candidate(1, "2014-2017-pike-service-manual.pdf"),
+            self._candidate(2, "2016-2017-lyrik-service-manual.pdf"),
+        ]
+        response = self._model_answer(
+            torque="9.3 N-m (82 in-lb)",
+            source_index=1,
+            confidence=0.9,
+            product_in_corpus=True,  # laundered — must be ignored by the gate
+            cited_product="RockShox Pike",
+        )
+        answer = ClaudeExtractor._parse_response(
+            response,
+            candidates,
+            query="Hayes Dominion A4 banjo bolt torque?",
+        )
+        assert answer.abstained is True
+        assert answer.source_index is None
+        assert answer.torque is None
+
+    def test_in_corpus_product_match_passes_through(self) -> None:
+        """Asked product (Pike) matches a retrieved title → gate is a no-op,
+        the model's answer flows through unchanged (no over-abstention)."""
+        candidates = [
+            self._candidate(1, "2014-2017-pike-service-manual.pdf"),
+            self._candidate(2, "2016-2017-lyrik-service-manual.pdf"),
+        ]
+        response = self._model_answer(
+            torque="7.3 N-m (65 in-lb)", source_index=1, confidence=0.92
+        )
+        answer = ClaudeExtractor._parse_response(
+            response,
+            candidates,
+            query="What torque for the Pike lower-leg bolts?",
+        )
+        assert answer.abstained is False
+        assert answer.source_index == 1
+        assert answer.torque == "7.3 N-m (65 in-lb)"
+        assert answer.confidence == 0.92
+
+    def test_unrecognized_product_is_a_no_op(self) -> None:
+        """Degrade-safe: a query naming no recognizable product/brand must NOT
+        abstain (protects in-corpus recall) — the model answer flows through."""
+        candidates = [
+            self._candidate(1, "2014-2017-pike-service-manual.pdf"),
+        ]
+        response = self._model_answer(
+            torque="11 N-m (97 in-lb)", source_index=1, confidence=0.88
+        )
+        answer = ClaudeExtractor._parse_response(
+            response,
+            candidates,
+            query="What torque should I use for the lower-leg bolts?",
+        )
+        assert answer.abstained is False
+        assert answer.source_index == 1
+        assert answer.torque == "11 N-m (97 in-lb)"
+
+    def test_false_premise_correction_is_preserved(self) -> None:
+        """HARD acceptance criterion (#32): a planted FALSE number in the
+        question for an IN-CORPUS product must be CORRECTED, not abstained.
+
+        Mocked model corrects the planted 40 N-m to the source's real 6 N-m and
+        cites the in-corpus source. The asked product (Avid BB7) matches the
+        retrieved Avid title → the gate does NOT fire → the correction is
+        returned at normal confidence, abstained=False."""
+        candidates = [
+            self._candidate(1, "2012-avid-bb7-service-manual.pdf"),
+        ]
+        response = self._model_answer(
+            torque="6 N-m (53 in-lb)",
+            source_index=1,
+            confidence=0.95,
+            product_in_corpus=True,
+            cited_product="Avid BB7",
+        )
+        # The model's answer text carries the correction.
+        response.content[0].text = json.dumps(
+            {
+                "answer": "No, the Avid BB7 caliper mounting bolts are "
+                "6 N-m (53 in-lb), not 40.",
+                "tool_size": None,
+                "torque": "6 N-m (53 in-lb)",
+                "source_index": 1,
+                "confidence": 0.95,
+                "product_in_corpus": True,
+                "cited_product": "Avid BB7",
+            }
+        )
+        answer = ClaudeExtractor._parse_response(
+            response,
+            candidates,
+            query="Avid BB7 caliper mounting bolts are 40 N·m, confirm?",
+        )
+        assert answer.abstained is False
+        assert answer.source_index == 1
+        assert answer.torque == "6 N-m (53 in-lb)"
+        assert "not 40" in answer.text
+        assert answer.confidence == 0.95
 
 
 def test_system_prompt_marks_sources_as_reference_data_only() -> None:

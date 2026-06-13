@@ -50,27 +50,45 @@ class AnswerResponse(BaseModel):
     torque: str | None = Field(default=None, examples=["11 N-m (97 in-lb)"])
     confidence: float = Field(..., ge=0.0, le=1.0)
 
-    source_type: Literal["pdf", "html"] = Field(
-        ..., description="Where the answer came from."
+    abstained: bool = Field(
+        default=False,
+        description=(
+            "True when the API declined to answer because the queried product "
+            "is not in the corpus (#32). On abstention source_type/source_url/"
+            "screenshot_url are all null — there is no genuine source, so the "
+            "frontend should render 'not in our manuals' distinctly from a "
+            "low-confidence guess, NOT a (wrong-product) deep link."
+        ),
     )
-    source_url: str = Field(
-        ...,
+
+    source_type: Literal["pdf", "html"] | None = Field(
+        default=None,
+        description="Where the answer came from. Null on abstention.",
+    )
+    source_url: str | None = Field(
+        default=None,
         description=(
             "Deep link to the source: the original PDF with a #page=N fragment, "
-            "or the docs.sram.com publication with a #section hash."
+            "or the docs.sram.com publication with a #section hash. Null on "
+            "abstention (no genuine source to link to)."
         ),
     )
     screenshot_url: str | None = Field(
         default=None,
         description=(
             "URL (public or presigned) to the rendered PNG of the source page. "
-            "Null for HTML sources — the deep link is the source reference."
+            "Null for HTML sources — the deep link is the source reference — "
+            "and null on abstention."
         ),
     )
 
     candidates: list[Candidate] = Field(
         default_factory=list,
-        description="The top-k candidates considered, in fused-rank order.",
+        description=(
+            "The top-k candidates considered, in fused-rank order. Carried even "
+            "on abstention for transparency — these are the weak hits the "
+            "retriever surfaced, not promoted to 'the answer'."
+        ),
     )
 
 
