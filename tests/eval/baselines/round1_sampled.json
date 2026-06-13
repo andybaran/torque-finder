@@ -1,0 +1,24 @@
+{
+  "_about": "Round-1 source-grounded baseline, recorded from the ad-hoc investigation (issue #34, handoff 2026-06-13). The full_run numbers are the historical 121-graded LLM-question run; the frozen sampled suite (tests/eval/ground_truth_sampled.py, 40 cases) uses DETERMINISTIC questions and will NOT reproduce 68/121 exactly. On the first PARTS_EVAL_LIVE run, re-record `frozen_sampled` from the frozen question set (see frozen_sampled.status). The pass_rate gate compares against `frozen_sampled` once recorded; until then it is informational.",
+  "full_run": {
+    "n": 121,
+    "n_pass": 68,
+    "pass_rate": 0.562,
+    "source": "ad-hoc LLM-generated question run (round 1)",
+    "failure_mode_histogram": {
+      "recall_not_found": 35,
+      "wrong_doc": 34,
+      "wrong_value": 16,
+      "missing_tool_size": 11,
+      "wrong_page": 9,
+      "http_502": 7
+    }
+  },
+  "frozen_sampled": {
+    "n": 40,
+    "n_pass": null,
+    "pass_rate": null,
+    "status": "NOT YET RECORDED - run `PARTS_EVAL_LIVE=1 parts-lookup-eval` once to populate",
+    "tolerance": 0.1
+  }
+}

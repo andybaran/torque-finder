@@ -20,6 +20,8 @@ import httpx
 import pytest
 
 from tests.conftest import LIVE_ENV_VARS, missing_env
+from tests.eval.grading import matches as _matches
+from tests.eval.grading import normalize as _normalize
 from tests.eval.ground_truth import (
     GROUND_TRUTH,
     GROUND_TRUTH_DOCUMENT_SHA256,
@@ -40,35 +42,10 @@ pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
 _DEEP_LINK_RE = re.compile(r"^https://docs\.sram\.com/.+#.+$")
 
 
-def _normalize(value: str) -> str:
-    """Collapse notation variants so the same number+unit always compares equal.
-
-    Only notation is normalized — the digits and units themselves must still
-    match exactly:
-    - newton-metre separators: ``N-m`` / ``N·m`` / ``N⋅m`` / ``Nm`` / ``N m``
-      (the PDF prints ``N·m``; ``thoughts.md`` writes ``N-m``)
-    - number/unit spacing: ``4 mm`` ≡ ``4mm``
-    - numeric ranges: ``7 to 8`` / ``7 and 8`` / en- or em-dash ranges ≡ ``7-8``
-    - Torx spelling: ``T-25`` ≡ ``T25``
-    """
-    normalized = value.lower()
-    normalized = re.sub(r"(?<![a-z])n\s*[·⋅-]?\s*m(?![a-z])", "n-m", normalized)
-    normalized = re.sub(r"(\d)\s+mm(?![a-z])", r"\1mm", normalized)
-    dashes = "\u2013\u2014"  # en dash, em dash (ruff RUF001 bans the literals)
-    normalized = re.sub(
-        r"(\d(?:\.\d+)?)\s*(?:[-" + dashes + r"]|to|and)\s*(\d)", r"\1-\2", normalized
-    )
-    normalized = re.sub(r"(?<![a-z])t\s*-\s*(\d)", r"t\1", normalized)
-    return re.sub(r"\s+", " ", normalized).strip()
-
-
-def _matches(actual: str | None, expected: str | None) -> bool:
-    """Notation-normalized substring match; ``expected=None`` is always satisfied."""
-    if expected is None:
-        return True
-    if actual is None:
-        return False
-    return _normalize(expected) in _normalize(actual)
+# The notation normalizer + matcher now live in the shared pure grading module
+# (``tests/eval/grading.py``) so there is exactly one copy across the gate.
+# Imported above under their old private names; the HTML suite re-exports them
+# from this module, so this stays the single import surface for both.
 
 
 def _database_url() -> str:
