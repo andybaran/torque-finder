@@ -5,6 +5,15 @@ extraction) into the single end-to-end mechanic-facing flow described in
 CLAUDE.md. Candidates are source-agnostic: PDF chunks go to Claude as page
 images; HTML chunks go as the parent module's text reconstructed from
 sibling chunks (small-to-big).
+
+Cost note (#29): the default candidate depth is ``top_k=5`` (up from 3).
+The loop below fetches one PDF page PNG per retrieved candidate and sends
+*all* of them to Claude vision, so on a PDF-heavy query 5 candidates is
+``5/3 ≈ 1.67x`` the vision input tokens (and 5 sequential R2 PNG fetches vs
+3) of the old depth — on *every* such query, not just the failing ones. At
+~10 queries/day this stays inside the CLAUDE.md ~$10/mo Claude budget, but
+the multiplier should be measured, not asserted: #34's eval harness captures
+per-query cost so the budget claim stays honest.
 """
 
 from __future__ import annotations

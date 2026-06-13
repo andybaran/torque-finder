@@ -26,7 +26,14 @@ class Settings(BaseSettings):
     # --- App ---
     app_env: Literal["local", "staging", "production"] = "local"
     log_level: str = "INFO"
-    retrieval_top_k: int = Field(default=3, ge=1, le=10)
+    # Candidate depth handed to extraction. Raised 3 -> 5 (#29): with many
+    # near-duplicate year/model manuals carrying identical specs, the *named*
+    # doc routinely lands at fused rank 4-10 and was discarded before Claude
+    # saw it. 5 over-fetches so the title rerank + extraction can recover it;
+    # each extra candidate is one more PDF page image to Claude vision
+    # (5/3 = ~1.67x vision input on PDF-heavy queries — within the CLAUDE.md
+    # ~$10/mo budget at ~10 q/day).
+    retrieval_top_k: int = Field(default=5, ge=1, le=10)
     # When true, VoyageEmbedder + ClaudeExtractor return deterministic
     # canned data instead of calling the real APIs. Local-smoke-test only.
     stub_external_apis: bool = False

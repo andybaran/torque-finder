@@ -108,6 +108,37 @@ def aggregate(records: list[GradedRecord]) -> EvalMetrics:
 
 
 @dataclass(frozen=True)
+class RecallMetrics:
+    """Aggregate recall@k over the #29 recall regression set.
+
+    ``recalled`` counts cases where a chunk documenting the expected value (and
+    within the named document family) appeared anywhere in the top-k retrieved
+    hits, *independent of extraction*. This isolates the Stage 1-3 retrieval
+    fix from the abstain/extraction behavior #28/#32 own.
+    """
+
+    k: int
+    n: int
+    n_recalled: int
+    recall_at_k: float
+    missed_case_ids: tuple[str, ...] = ()
+
+
+def recall_at_k(per_case_recalled: dict[str, bool], *, k: int) -> RecallMetrics:
+    """Aggregate a {case_id: recalled?} map into a RecallMetrics for depth ``k``."""
+    n = len(per_case_recalled)
+    n_recalled = sum(1 for ok in per_case_recalled.values() if ok)
+    missed = tuple(cid for cid, ok in per_case_recalled.items() if not ok)
+    return RecallMetrics(
+        k=k,
+        n=n,
+        n_recalled=n_recalled,
+        recall_at_k=_ratio(n_recalled, n),
+        missed_case_ids=missed,
+    )
+
+
+@dataclass(frozen=True)
 class AdversarialMetrics:
     """Aggregate metrics over the out-of-corpus adversarial probes (lens A)."""
 

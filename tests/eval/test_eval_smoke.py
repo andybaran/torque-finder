@@ -63,8 +63,15 @@ async def _fetch_png(r2, key: str) -> bytes:  # type: ignore[no-untyped-def]
         return response.content
 
 
-async def run_query(question: str, top_k: int = 3):  # type: ignore[no-untyped-def]
-    """Shared retrieval→extraction runner. Returns (hits, answer, chosen_hit)."""
+async def run_query(question: str, top_k: int = 5):  # type: ignore[no-untyped-def]
+    """Shared retrieval→extraction runner. Returns (hits, answer, chosen_hit).
+
+    Default ``top_k=5`` matches the shipped depth (#29) so the eval exercises
+    what production serves. All callers (``test_ground_truth_case``,
+    ``run_eval._run_sampled/_run_adversarial``, ``test_eval_sampled``) rely on
+    this default — none pins top_k explicitly — so the recall@k the harness
+    measures is recall@5.
+    """
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
     from parts_lookup.assets.r2_client import R2Client
