@@ -598,6 +598,61 @@ class TestRequestShape:
         assert kwargs["max_tokens"] == 4096
 
 
+class TestSchemaDialectCompatibility:
+    """#44: Anthropic's structured-output schema dialect REJECTS JSON-Schema
+    validation keywords (it 400s rather than silently stripping them). The
+    mocked-client request-shape tests above can't catch this — only the live
+    API does — so this walks OUTPUT_SCHEMA and bans the whole class offline.
+    Ranges (source_index>=1, confidence 0..1) are enforced post-parse instead.
+    """
+
+    # Validation keywords Anthropic structured outputs reject. Not exhaustive of
+    # the JSON-Schema spec, but covers every constraint family we'd plausibly add
+    # to a value/integer/string field — and exactly the ones that caused #44.
+    UNSUPPORTED_KEYWORDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "multipleOf",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+            "pattern",
+            "format",
+        }
+    )
+
+    @classmethod
+    def _offending_keywords(cls, node: Any, path: str = "") -> list[str]:
+        found: list[str] = []
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in cls.UNSUPPORTED_KEYWORDS:
+                    found.append(f"{path}.{key}".lstrip("."))
+                found.extend(cls._offending_keywords(value, f"{path}.{key}"))
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                found.extend(cls._offending_keywords(item, f"{path}[{i}]"))
+        return found
+
+    def test_output_schema_carries_no_unsupported_keywords(self) -> None:
+        offending = self._offending_keywords(prompt.OUTPUT_SCHEMA)
+        assert offending == [], (
+            "OUTPUT_SCHEMA contains JSON-Schema validation keywords that "
+            f"Anthropic structured outputs reject with a 400: {offending}. "
+            "Remove them and enforce the constraint post-parse instead (#44)."
+        )
+
+    def test_detector_catches_a_planted_minimum(self) -> None:
+        """The guard itself must trip on the exact #44 shape, so it can't rot
+        into a no-op."""
+        planted = {"properties": {"n": {"type": "integer", "minimum": 1}}}
+        assert self._offending_keywords(planted) == ["properties.n.minimum"]
+
+
 class TestFailureLogging:
     """Every failure path raises a labeled ExtractionError AND emits a
     structured log line carrying stop_reason / request_id / usage / raw_text,

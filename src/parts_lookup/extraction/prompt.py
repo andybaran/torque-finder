@@ -120,8 +120,11 @@ OUTPUT_SCHEMA: dict[str, Any] = {
             ),
         },
         "source_index": {
+            # No `minimum`: Anthropic's structured-output schema dialect rejects
+            # JSON-Schema validation keywords (minimum/maximum/etc.) with a 400.
+            # source_index >= 1 is enforced post-parse by the candidate-match
+            # check in claude_client._parse_response (stronger than minimum: 1).
             "type": ["integer", "null"],
-            "minimum": 1,
             "description": (
                 "The number of the candidate source that contains the answer. "
                 "Must match one of the source numbers supplied in the user "
@@ -129,12 +132,13 @@ OUTPUT_SCHEMA: dict[str, Any] = {
             ),
         },
         "confidence": {
+            # No `minimum`/`maximum`: see source_index above — the range is
+            # stated in the description and is advisory; structured outputs
+            # would 400 on the constraint keywords.
             "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
             "description": (
-                "0.0-1.0 self-assessed confidence. Use <= 0.3 when the "
-                "supplied sources do not actually answer the question."
+                "Self-assessed confidence in the range 0.0-1.0. Use <= 0.3 when "
+                "the supplied sources do not actually answer the question."
             ),
         },
         "product_in_corpus": {
