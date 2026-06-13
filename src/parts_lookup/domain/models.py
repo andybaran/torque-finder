@@ -76,6 +76,13 @@ class IndexedDocument(_Frozen):
     publication's pub_id. For PDFs, ``source_url`` holds the R2 object key of
     the original file (the API resolves it to a public/presigned URL); for
     HTML it is the docs.sram.com publication URL.
+
+    ``product_family`` / ``brand`` are the #28 product facet, deterministically
+    derived from the title at ingest (and backfilled for legacy rows) via
+    ``retrieval.product_match.derive_facet``. Both are nullable and FAIL-SAFE:
+    a title that does not confidently identify a product leaves them ``None``
+    rather than guessing — a wrong family would mis-boost retrieval and trip the
+    contamination guard on correct answers.
     """
 
     id: int
@@ -84,6 +91,8 @@ class IndexedDocument(_Frozen):
     source_url: str
     source_ref: str
     created_at: datetime
+    product_family: str | None = None
+    brand: str | None = None
 
 
 class HtmlChunk(_Frozen):
@@ -109,7 +118,14 @@ class ParsedPublication(_Frozen):
 
 
 class RetrievedChunk(_Frozen):
-    """A retrieval hit from the unified chunks index. ``score`` is the fused score."""
+    """A retrieval hit from the unified chunks index. ``score`` is the fused score.
+
+    ``product_family`` / ``brand`` are hydrated from the owning document's #28
+    facet so the product-aware boost (``retrieval.hybrid``) can compare a hit's
+    product against the asked query scope without a second query. Both nullable:
+    a document with no confidently-derived product stays product-blind (the
+    boost is a no-op for it), preserving today's recall.
+    """
 
     chunk_id: int
     document_id: int
@@ -124,6 +140,8 @@ class RetrievedChunk(_Frozen):
     source_url: str
     score: float
     source: RetrievalSource
+    product_family: str | None = None
+    brand: str | None = None
 
 
 class MinedChunk(_Frozen):

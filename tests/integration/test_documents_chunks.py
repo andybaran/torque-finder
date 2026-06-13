@@ -152,6 +152,98 @@ async def test_migration_copy_preserved_pages() -> None:
         await engine.dispose()
 
 
+async def test_product_family_facet_round_trip() -> None:
+    """#28: upsert derives product_family from the title; backfill sets it on an
+    existing row. Insert + rollback only — production untouched.
+
+    Skips cleanly until migration 0006 has been applied (the columns must exist);
+    applying 0006 to prod is GATED to the user, so offline this skips.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from parts_lookup.domain.models import SourceType
+    from parts_lookup.indexing.repository import Repository
+
+    engine = _engine()
+    try:
+        async with AsyncSession(engine) as session:
+            has_col = (
+                await session.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name='documents' AND column_name='product_family'"
+                    )
+                )
+            ).scalar_one_or_none()
+            if has_col is None:
+                pytest.skip("documents.product_family not present (migration 0006 not applied)")
+
+            repo = Repository(session)
+            # A clean, product-bearing PDF title derives the family at upsert.
+            doc = await repo.upsert_document(
+                source_type=SourceType.PDF,
+                title="2014-2017-pike-service-manual.pdf",
+                source_url="pdfs/pike.pdf",
+                source_ref=f"test-{uuid.uuid4().hex}",
+            )
+            assert doc.product_family == "pike"
+            assert doc.brand is None
+
+            # An unrecognizable title FAIL-SAFEs to NULL (never a guess), then the
+            # backfill write path can set/clear the facet on an existing row.
+            blind = await repo.upsert_document(
+                source_type=SourceType.PDF,
+                title="pdf.pdf",
+                source_url="pdfs/blind.pdf",
+                source_ref=f"test-{uuid.uuid4().hex}",
+            )
+            assert blind.product_family is None and blind.brand is None
+
+            await repo.set_product_facet(blind.id, "vivid", None)
+            refetched = await repo.get_document_by_source_ref(blind.source_ref)
+            assert refetched is not None and refetched.product_family == "vivid"
+
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+async def test_migration_0006_columns_and_index_present_if_applied() -> None:
+    """Structural assertion: when 0006 is applied, the columns are nullable and
+    the index exists. Skips when 0006 has not been applied (gated prod migration)."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    engine = _engine()
+    try:
+        async with AsyncSession(engine) as session:
+            cols = {
+                row.column_name: row.is_nullable
+                for row in (
+                    await session.execute(
+                        text(
+                            "SELECT column_name, is_nullable FROM information_schema.columns "
+                            "WHERE table_name='documents' "
+                            "AND column_name IN ('product_family','brand')"
+                        )
+                    )
+                ).all()
+            }
+            if "product_family" not in cols:
+                pytest.skip("migration 0006 not applied; columns absent")
+            assert cols["product_family"] == "YES"  # nullable
+            assert cols["brand"] == "YES"
+            idx = (
+                await session.execute(
+                    text("SELECT to_regclass('public.ix_documents_product_family')")
+                )
+            ).scalar_one()
+            assert idx is not None
+    finally:
+        await engine.dispose()
+
+
 async def test_hybrid_search_returns_mixed_source_chunks() -> None:
     """PDF and HTML chunks rank in one fused list (insert + rollback, stub embedder)."""
     from sqlalchemy.ext.asyncio import AsyncSession

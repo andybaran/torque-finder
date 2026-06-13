@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from parts_lookup.config import Settings
 from parts_lookup.domain.errors import RetrievalError
 from parts_lookup.domain.models import (
+    ProductScope,
     Query,
     RetrievalSource,
     RetrievedChunk,
@@ -29,6 +30,7 @@ from parts_lookup.domain.models import (
 )
 from parts_lookup.retrieval.embedder import VoyageEmbedder
 from parts_lookup.retrieval.keyword import keyword_search
+from parts_lookup.retrieval.product_match import extract_query_scope, scope_matches
 from parts_lookup.retrieval.vector import vector_search
 
 RRF_K: int = 60
@@ -80,6 +82,29 @@ _TORQUE_RE = re.compile(r"\d+(?:\.\d+)?\s*N[·.\-]?\s?m", re.IGNORECASE)
 TITLE_TOKEN_BOOST: float = 5.0e-4
 TITLE_BOOST_CAP: float = 1.5e-3
 
+# --- Product-aware boost (#28) tuning knobs ----------------------------------
+# Contamination fix: when the query names a recognizable product (via the
+# shared deterministic extract_query_scope), nudge candidates whose owning
+# document's product FACET matches the asked product UP, and nudge documents
+# whose product is a confirmed DIFFERENT in-corpus product DOWN. This reorders
+# the fused set toward the right product before the top_k cut + page expansion,
+# attacking the "a different in-corpus product out-ranked the asked one" defect.
+#
+# Calibration is anchored to the same RRF-gap scale as the title rerank. The
+# boost is sized to break the near-tie clusters of identical-spec sibling
+# manuals (fused rank ~4-10, adjacent gap ~2.1e-4 to ~2.4e-4): PRODUCT_MATCH_BOOST
+# clears ~2 adjacent gaps so a matching product reliably wins a near-tie, while
+# PRODUCT_MISMATCH_PENALTY pushes a confirmed wrong-product sibling a similar
+# distance down. Both are BOUNDED single increments on the RRF scale — they
+# reorder near-equal clusters but can NEVER swamp a candidate that leads by a
+# large RRF margin (different channel / much higher rank), so a genuinely strong
+# hit is never displaced by the facet alone. This is a precision pass, not a
+# hard filter: a missing/NULL facet (the FAIL-SAFE default) is a no-op, so a
+# mis-derived or absent product can't zero out recall. #32's abstention guard
+# remains the backstop for residual mismatch; this only improves ordering.
+PRODUCT_MATCH_BOOST: float = 5.0e-4
+PRODUCT_MISMATCH_PENALTY: float = 5.0e-4
+
 # Tokens too generic to disambiguate a year/model — boosting on them would
 # reward noise, so they're dropped from the overlap set on both sides.
 _RERANK_STOPWORDS: frozenset[str] = frozenset(
@@ -105,7 +130,9 @@ _LOAD_CHUNKS_SQL = text(
         c.source_url    AS source_url,
         d.source_type   AS source_type,
         d.title         AS document_title,
-        d.source_url    AS document_source_url
+        d.source_url    AS document_source_url,
+        d.product_family AS product_family,
+        d.brand         AS brand
     FROM chunks    AS c
     JOIN documents AS d ON d.id = c.document_id
     WHERE c.id IN :chunk_ids
@@ -130,7 +157,9 @@ _LOAD_DOC_NEIGHBORS_SQL = text(
         c.source_url    AS source_url,
         d.source_type   AS source_type,
         d.title         AS document_title,
-        d.source_url    AS document_source_url
+        d.source_url    AS document_source_url,
+        d.product_family AS product_family,
+        d.brand         AS brand
     FROM chunks    AS c
     JOIN documents AS d ON d.id = c.document_id
     WHERE c.document_id = :doc_id
@@ -204,6 +233,73 @@ def _rerank_by_title(
 
     def boosted(hit: _FusedHit) -> float:
         return hit.score + _title_boost(query_tokens, titles.get(hit.chunk_id, ""))
+
+    return sorted(fused, key=boosted, reverse=True)
+
+
+# --- Product-aware boost (#28) -----------------------------------------------
+
+
+@dataclass(frozen=True)
+class _ProductMeta:
+    """The per-chunk product facet the boost needs (pure value, no ORM)."""
+
+    family: str | None
+    brand: str | None
+
+
+def _product_delta(asked: ProductScope, candidate_facet: _ProductMeta) -> float:
+    """Bounded score delta for one candidate given the asked product scope.
+
+    * Candidate product MATCHES the asked scope → ``+PRODUCT_MATCH_BOOST``.
+    * Candidate product is a CONFIRMED DIFFERENT in-corpus product (identified
+      facet that does not match) → ``-PRODUCT_MISMATCH_PENALTY``.
+    * Candidate has NO derived product (NULL facet — the FAIL-SAFE default) →
+      ``0.0``: never penalize a product-blind document, so a missing/mis-derived
+      facet can't drop a real answer out of the cut.
+    """
+    candidate_scope = ProductScope(
+        family=candidate_facet.family,
+        brand=candidate_facet.brand,
+        # Confidence only gates persistence/derivation upstream; by here the
+        # facet is already the trusted stored value. Mark it identified so
+        # scope_matches compares on family/brand, matching #32's live usage.
+        confidence=0.9 if candidate_facet.family is not None else 0.6,
+    )
+    if not candidate_scope.is_identified:
+        return 0.0
+    if scope_matches(asked, candidate_scope):
+        return PRODUCT_MATCH_BOOST
+    return -PRODUCT_MISMATCH_PENALTY
+
+
+def _rerank_by_product(
+    query_text: str,
+    fused: list[_FusedHit],
+    facets: dict[int, _ProductMeta],
+) -> list[_FusedHit]:
+    """Re-sort fused hits toward the asked product (#28 contamination fix).
+
+    Degrade-safe: if ``extract_query_scope`` cannot confidently identify a
+    product in the query (unidentified scope), this is a NO-OP — the fused order
+    is returned unchanged, so an under-specified question never has its recall
+    harmed. When a product IS named, each hit's bounded ``_product_delta`` is
+    added before re-sorting (``score`` is left untouched; only ordering moves).
+    The sort is stable, so equal boosted scores keep their prior order.
+
+    Coordination with #32: this only reorders candidates so the right product
+    surfaces first; #32's abstention guard is the separate backstop that
+    declines to answer when no in-corpus product matches at all.
+    """
+    asked = extract_query_scope(query_text)
+    if not asked.is_identified:
+        return fused
+
+    def boosted(hit: _FusedHit) -> float:
+        facet = facets.get(hit.chunk_id)
+        if facet is None:
+            return hit.score
+        return hit.score + _product_delta(asked, facet)
 
     return sorted(fused, key=boosted, reverse=True)
 
@@ -343,6 +439,8 @@ def _row_to_retrieved(row: Any, score: float) -> RetrievedChunk:
         source_url=str(row.source_url),
         score=score,
         source=RetrievalSource.HYBRID,
+        product_family=None if row.product_family is None else str(row.product_family),
+        brand=None if row.brand is None else str(row.brand),
     )
 
 
@@ -400,11 +498,22 @@ async def hybrid_search(
 
     rows = {int(row.chunk_id): row for row in result}
 
-    # Stage-3 bounded title rerank, THEN cut to top_k for the BASE set. The boost
-    # only breaks near-ties (see _title_boost), so a far-ahead candidate is never
-    # displaced. This base list seeds within-doc expansion below.
+    # Stage-3 bounded title rerank, then the #28 product-aware boost, THEN cut to
+    # top_k for the BASE set. Both boosts only break near-ties (bounded on the RRF
+    # scale), so a far-ahead candidate is never displaced. Title rerank runs first
+    # (model/year disambiguation), then the product boost reorders toward the
+    # asked product family; both are degrade-safe no-ops when the query names
+    # nothing recognizable. This base list seeds within-doc expansion below.
     titles = {cid: str(row.document_title) for cid, row in rows.items()}
     fused = _rerank_by_title(query_text, fused, titles)
+    facets = {
+        cid: _ProductMeta(
+            family=None if row.product_family is None else str(row.product_family),
+            brand=None if row.brand is None else str(row.brand),
+        )
+        for cid, row in rows.items()
+    }
+    fused = _rerank_by_product(query_text, fused, facets)
     base = fused[:top_k]
 
     # --- Within-doc page-neighbor expansion (#30) ---------------------------

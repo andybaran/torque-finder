@@ -33,6 +33,7 @@ from parts_lookup.domain.models import (
     MinedChunk,
     SourceType,
 )
+from parts_lookup.retrieval.product_match import derive_facet
 
 
 class Base(DeclarativeBase):
@@ -47,6 +48,13 @@ class Document(Base):
     title: Mapped[str] = mapped_column(nullable=False)
     source_url: Mapped[str] = mapped_column(nullable=False)
     source_ref: Mapped[str] = mapped_column(unique=True, nullable=False)
+    # #28 product facet — deterministically derived from `title` at ingest /
+    # backfill via retrieval.product_match.derive_facet. Nullable + FAIL-SAFE:
+    # a title that doesn't confidently identify a product stays NULL (never a
+    # guess). The product-aware retrieval boost reads `product_family`; `brand`
+    # is the weaker fallback for generic multi-product manuals.
+    product_family: Mapped[str | None] = mapped_column(nullable=True)
+    brand: Mapped[str | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -59,6 +67,9 @@ class Document(Base):
 
     __table_args__ = (
         CheckConstraint("source_type IN ('pdf', 'html')", name="ck_documents_source_type"),
+        # Boost lookups filter/group by product_family; a btree index keeps the
+        # facet scan cheap as the corpus grows (low-cardinality but worth it).
+        Index("ix_documents_product_family", "product_family"),
     )
 
 
@@ -111,6 +122,8 @@ def _document_row_to_domain(row: Document) -> IndexedDocument:
         source_url=row.source_url,
         source_ref=row.source_ref,
         created_at=row.created_at,
+        product_family=row.product_family,
+        brand=row.brand,
     )
 
 
@@ -138,7 +151,14 @@ class Repository:
         so re-ingest is idempotent at the document level. The source_type of
         an existing document is immutable: a mismatch raises IngestionError
         rather than silently keeping the old type.
+
+        The #28 product facet (``product_family``/``brand``) is derived from the
+        title at write time via the shared ``derive_facet`` (FAIL-SAFE: NULL
+        unless a product is confidently identified). It is re-derived on the
+        refresh path too, so a corrected title updates the facet on re-ingest.
         """
+        product_family, brand = derive_facet(title)
+
         existing = await self._get_document_orm_by_source_ref(source_ref)
         if existing is not None:
             if existing.source_type != source_type.value:
@@ -149,6 +169,8 @@ class Repository:
                 )
             existing.title = title
             existing.source_url = source_url
+            existing.product_family = product_family
+            existing.brand = brand
             await self._session.flush()
             return _document_row_to_domain(existing)
 
@@ -157,6 +179,8 @@ class Repository:
             title=title,
             source_url=source_url,
             source_ref=source_ref,
+            product_family=product_family,
+            brand=brand,
         )
         self._session.add(row)
         await self._session.flush()
@@ -166,6 +190,33 @@ class Repository:
     async def get_document_by_source_ref(self, source_ref: str) -> IndexedDocument | None:
         row = await self._get_document_orm_by_source_ref(source_ref)
         return _document_row_to_domain(row) if row is not None else None
+
+    async def list_documents(self) -> Sequence[IndexedDocument]:
+        """All documents (read model), ordered by title — backfill/audit support.
+
+        Read-only; used by the #28 backfill (``scripts/backfill_product_family``)
+        to inspect every title and re-derive the facet, and by tests. Returns
+        pure domain objects; ORM rows never escape.
+        """
+        result = await self._session.execute(select(Document).order_by(Document.title))
+        return [_document_row_to_domain(row) for row in result.scalars().all()]
+
+    async def set_product_facet(
+        self, document_id: int, product_family: str | None, brand: str | None
+    ) -> None:
+        """Write the derived ``(product_family, brand)`` onto an existing document.
+
+        The backfill's write step. Deliberately separate from ``upsert_document``
+        so the one-off re-derivation never has to re-supply title/source_url. The
+        caller commits; this only flushes (so it composes inside a transaction
+        and is safe to roll back in tests).
+        """
+        row = await self._session.get(Document, document_id)
+        if row is None:
+            raise IngestionError(f"document id={document_id} not found for facet update")
+        row.product_family = product_family
+        row.brand = brand
+        await self._session.flush()
 
     async def insert_chunk(
         self,
