@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,33 @@ from parts_lookup.retrieval.vector import vector_search
 
 RRF_K: int = 60
 DEFAULT_TOP_K_PER_CHANNEL: int = 20
+
+# --- Within-doc page expansion (#30) defaults --------------------------------
+# Used only when hybrid_search is called without explicit settings (tests,
+# legacy callers). The real values flow from config.Settings.
+DEFAULT_PAGE_WINDOW: int = 1
+DEFAULT_MAX_CANDIDATES: int = 6
+
+# --- Within-doc rerank (#30, Step F) tuning knobs ----------------------------
+# Among the leader document's expanded candidates, nudge up the page whose text
+# carries BOTH a torque value (an "N·m" string) AND a token from the question's
+# fastener/component noun phrase. This is a deterministic precision pass — NO
+# model-based reranker (that decision is deferred to and owned by #28).
+#
+# Calibration mirrors the title-rerank discipline (#29): the bonus is sized to
+# break only NEAR-TIES *within the leader document*. With RRF_K=60 the gap
+# between adjacent single-channel fused ranks near the region the answer page
+# lands (~rank 4-10) is ~2.1e-4 to ~2.4e-4. RERANK_BONUS clears ~2 such gaps,
+# so it reliably reorders a real near-tie but, being a single fixed increment,
+# can NEVER lift a regex-only page above a higher-fused page that lacks the
+# fastener token (non-demotion invariant — see _rerank_within_doc and the unit
+# test). The boost only reorders; it never crosses the base/neighbor budget
+# boundary (eviction keeps all base pages first regardless).
+RERANK_BONUS: float = 5.0e-4
+
+# Torque value shape: "40 N-m", "5.5 N·m", "11 Nm", "9 N.m" (notation varies by
+# manual). Case-insensitive; the optional separator covers ·, ., - or a space.
+_TORQUE_RE = re.compile(r"\d+(?:\.\d+)?\s*N[·.\-]?\s?m", re.IGNORECASE)
 
 # --- Stage-3 title rerank (#29) tuning knobs --------------------------------
 # When the query names a year/model ("2012 Monarch", "Vivid Air", "Lyrik")
@@ -83,6 +111,32 @@ _LOAD_CHUNKS_SQL = text(
     WHERE c.id IN :chunk_ids
     """
 ).bindparams(bindparam("chunk_ids", expanding=True))
+
+
+# Within-doc page-neighbor lookup (#30): the leader document's pages in a
+# contiguous ordinal window [lo, hi]. Same projection as _LOAD_CHUNKS_SQL so
+# hydration is uniform. UniqueConstraint("document_id","ordinal") guarantees at
+# most one chunk per (doc, ordinal), so this returns ≤ (hi-lo+1) rows.
+_LOAD_DOC_NEIGHBORS_SQL = text(
+    """
+    SELECT
+        c.id            AS chunk_id,
+        c.document_id   AS document_id,
+        c.ordinal       AS ordinal,
+        c.text          AS text,
+        c.png_r2_key    AS png_r2_key,
+        c.anchor        AS anchor,
+        c.parent_anchor AS parent_anchor,
+        c.source_url    AS source_url,
+        d.source_type   AS source_type,
+        d.title         AS document_title,
+        d.source_url    AS document_source_url
+    FROM chunks    AS c
+    JOIN documents AS d ON d.id = c.document_id
+    WHERE c.document_id = :doc_id
+      AND c.ordinal BETWEEN :lo AND :hi
+    """
+)
 
 
 @dataclass(frozen=True)
@@ -154,6 +208,144 @@ def _rerank_by_title(
     return sorted(fused, key=boosted, reverse=True)
 
 
+# --- Within-doc page expansion (#30) -----------------------------------------
+
+
+@dataclass(frozen=True)
+class _ChunkMeta:
+    """The minimum per-chunk facts the expansion algorithm needs.
+
+    Pure value object (no ORM, no I/O) so Steps B-F are offline-testable: the
+    leader-doc selection, neighbor merge, eviction, and within-doc rerank all
+    operate on these, not on hydrated rows.
+    """
+
+    chunk_id: int
+    document_id: int
+    ordinal: int
+    text: str
+    is_pdf: bool
+
+
+def _select_leader_chunk(fused: list[_FusedHit]) -> _FusedHit | None:
+    """The single highest-fused chunk — the expansion anchor (Step B).
+
+    Exactly one chunk (hence one document) is expanded — no cross-doc
+    aggregation, no "(s)". The tiebreak among equal scores is made explicit:
+    higher score, then lower ``chunk_id`` (stable and deterministic regardless
+    of the order ``fused`` happens to arrive in). Returns ``None`` only for an
+    empty list.
+    """
+    if not fused:
+        return None
+    return min(fused, key=lambda h: (-h.score, h.chunk_id))
+
+
+def _rerank_within_doc(
+    query_text: str,
+    fused: list[_FusedHit],
+    meta: dict[int, _ChunkMeta],
+    leader_doc_id: int,
+) -> list[_FusedHit]:
+    """Deterministic within-leader-doc precision pass (Step F).
+
+    Adds a single fixed ``RERANK_BONUS`` to a leader-doc candidate whose text
+    matches BOTH a torque value (``_TORQUE_RE``) AND a token from the question's
+    fastener/component noun phrase (token overlap, generic stopwords dropped).
+
+    Non-demotion invariant (unit-tested): because the bonus is one fixed small
+    increment sized to clear only ~2 adjacent RRF-rank gaps, it can break a real
+    near-tie *within the same document* but can NEVER lift a regex-only page
+    above a higher-fused page that lacks the fastener token, nor demote a
+    higher-fused page below a lower-fused page that merely contains an "N·m"
+    string. ``score`` is left untouched; only ordering changes. The sort is
+    stable, so equal boosted scores keep their prior order (deterministic).
+    """
+    query_tokens = _tokens(query_text)
+    if not query_tokens:
+        return fused
+
+    def matches_fastener_spec(m: _ChunkMeta) -> bool:
+        if not _TORQUE_RE.search(m.text):
+            return False
+        return bool(query_tokens & _tokens(m.text))
+
+    def boosted(hit: _FusedHit) -> float:
+        m = meta.get(hit.chunk_id)
+        if m is None or m.document_id != leader_doc_id or not m.is_pdf:
+            return hit.score
+        return hit.score + (RERANK_BONUS if matches_fastener_spec(m) else 0.0)
+
+    return sorted(fused, key=boosted, reverse=True)
+
+
+def _assemble_candidates(
+    base: list[_FusedHit],
+    neighbors: list[_ChunkMeta],
+    anchor_ordinal: int,
+    anchor_score: float,
+    max_candidates: int,
+) -> list[_FusedHit]:
+    """Merge base winners + leader-doc neighbors into one budgeted list (Steps D-E).
+
+    Deterministic and pure so the ``source_index`` contract is unit-testable.
+
+    - ``base`` is the fused-winner list in fused order. Its pages are NEVER
+      reordered and NEVER evicted — that stability is what keeps
+      ``retrieved[source_index - 1]`` resolving to the same chunk after
+      expansion (``query.py`` L108 strict-zip + L122 index).
+    - Neighbors not already in ``base`` are appended, ordered by ascending
+      ``|ordinal - anchor|`` then ascending ``ordinal`` (closest-to-anchor,
+      lowest page first). A neighbor already present in ``base`` keeps its base
+      position (dedup by ``chunk_id``).
+    - The merged list is capped at ``max_candidates``. Base pages fill first; if
+      base alone exceeds the budget it is truncated from the bottom of fused
+      order (only possible when top_k > max_candidates). Remaining room goes to
+      neighbors in the order above; neighbors that don't fit are dropped
+      (farthest-from-anchor dropped first).
+
+    Injected neighbors carry no fused score of their own (they were in neither
+    channel). They are given a display score just below ``anchor_score`` so the
+    user-facing ordering is sane; the actual candidate order is fixed by append
+    position, not re-sorted by this score.
+    """
+    kept: list[_FusedHit] = base[:max_candidates]
+    if len(kept) >= max_candidates:
+        return kept
+
+    present = {hit.chunk_id for hit in kept}
+    ordered_neighbors = sorted(
+        (n for n in neighbors if n.chunk_id not in present),
+        key=lambda n: (abs(n.ordinal - anchor_ordinal), n.ordinal),
+    )
+    for rank, n in enumerate(ordered_neighbors, start=1):
+        if len(kept) >= max_candidates:
+            break
+        # Strictly below the anchor, and monotonically decreasing with distance,
+        # so a presentation layer that sorts by score keeps closest-first order.
+        kept.append(_FusedHit(chunk_id=n.chunk_id, score=anchor_score - rank * RERANK_BONUS))
+    return kept
+
+
+def _row_to_retrieved(row: Any, score: float) -> RetrievedChunk:
+    """Hydrate one SQL row (from either chunk-load query) into a domain object."""
+    return RetrievedChunk(
+        chunk_id=int(row.chunk_id),
+        document_id=int(row.document_id),
+        source_type=SourceType(row.source_type),
+        document_title=str(row.document_title),
+        document_source_url=str(row.document_source_url),
+        ordinal=int(row.ordinal),
+        text=str(row.text),
+        png_r2_key=None if row.png_r2_key is None else str(row.png_r2_key),
+        anchor=None if row.anchor is None else str(row.anchor),
+        parent_anchor=None if row.parent_anchor is None else str(row.parent_anchor),
+        source_url=str(row.source_url),
+        score=score,
+        source=RetrievalSource.HYBRID,
+    )
+
+
 async def hybrid_search(
     session: AsyncSession,
     embedder: VoyageEmbedder,
@@ -161,6 +353,8 @@ async def hybrid_search(
     top_k: int,
     *,
     per_channel_k: int = DEFAULT_TOP_K_PER_CHANNEL,
+    page_window: int = DEFAULT_PAGE_WINDOW,
+    max_candidates: int = DEFAULT_MAX_CANDIDATES,
 ) -> list[RetrievedChunk]:
     """Run keyword + vector sequentially on the shared session, fuse with RRF, hydrate winners.
 
@@ -170,6 +364,15 @@ async def hybrid_search(
     is dominated by the Voyage embedding call anyway, and each chunk query
     is single-digit-ms at LAN RTT to Postgres, so sequential is fine; if it
     ever isn't, the right move is two sessions, not gathered ops on one.
+
+    Within-doc page expansion (#30): after fusion + the title rerank, the single
+    top-RRF document is expanded by ``±page_window`` neighbor pages (PDF only),
+    capped at ``max_candidates`` total pages. ``top_k`` selects the base
+    candidate breadth (which docs/pages seed the set); ``max_candidates`` is the
+    hard page budget sent to Claude. Expansion happens HERE — inside
+    ``hybrid_search`` — and returns one ordered list, so ``query.py``'s
+    ``enumerate``/strict-``zip``/``source_index`` 1:1 contract is preserved
+    (base candidates are never reordered; neighbors are append-only).
     """
     query_embedding = await embedder.embed_query(query_text)
 
@@ -197,33 +400,85 @@ async def hybrid_search(
 
     rows = {int(row.chunk_id): row for row in result}
 
-    # Stage-3 bounded title rerank, THEN cut to top_k. The boost only breaks
-    # near-ties (see _title_boost), so a far-ahead candidate is never displaced.
+    # Stage-3 bounded title rerank, THEN cut to top_k for the BASE set. The boost
+    # only breaks near-ties (see _title_boost), so a far-ahead candidate is never
+    # displaced. This base list seeds within-doc expansion below.
     titles = {cid: str(row.document_title) for cid, row in rows.items()}
-    fused = _rerank_by_title(query_text, fused, titles)[:top_k]
+    fused = _rerank_by_title(query_text, fused, titles)
+    base = fused[:top_k]
+
+    # --- Within-doc page-neighbor expansion (#30) ---------------------------
+    # Build the per-chunk metadata the expansion algorithm needs (pure values).
+    meta: dict[int, _ChunkMeta] = {
+        cid: _ChunkMeta(
+            chunk_id=cid,
+            document_id=int(row.document_id),
+            ordinal=int(row.ordinal),
+            text=str(row.text),
+            is_pdf=SourceType(row.source_type) is SourceType.PDF,
+        )
+        for cid, row in rows.items()
+    }
+
+    leader = _select_leader_chunk(base)
+    neighbor_rows: dict[int, Any] = {}
+    assembled = base
+    if leader is not None and (leader_meta := meta.get(leader.chunk_id)) is not None:
+        # HTML docs are never expanded (no ordinal-window meaning; small-to-big
+        # module reconstruction in the route already covers them).
+        if leader_meta.is_pdf and page_window > 0:
+            anchor = leader_meta.ordinal
+            try:
+                neighbor_result = await session.execute(
+                    _LOAD_DOC_NEIGHBORS_SQL,
+                    {
+                        "doc_id": leader_meta.document_id,
+                        "lo": anchor - page_window,
+                        "hi": anchor + page_window,
+                    },
+                )
+            except Exception as exc:
+                raise RetrievalError("Failed to load leader-doc neighbor rows") from exc
+
+            neighbor_metas: list[_ChunkMeta] = []
+            for row in neighbor_result:
+                cid = int(row.chunk_id)
+                neighbor_rows[cid] = row
+                neighbor_metas.append(
+                    _ChunkMeta(
+                        chunk_id=cid,
+                        document_id=int(row.document_id),
+                        ordinal=int(row.ordinal),
+                        text=str(row.text),
+                        is_pdf=True,
+                    )
+                )
+
+            # Step F: deterministic within-leader-doc rerank (reorders only
+            # near-ties inside the leader doc; base positions of OTHER docs are
+            # unaffected, and no neighbor can cross the base/budget boundary —
+            # eviction in _assemble_candidates keeps all base pages first).
+            base = _rerank_within_doc(query_text, base, meta, leader_meta.document_id)
+            assembled = _assemble_candidates(
+                base=base,
+                neighbors=neighbor_metas,
+                anchor_ordinal=anchor,
+                anchor_score=leader.score,
+                max_candidates=max_candidates,
+            )
+        else:
+            assembled = base[:max_candidates]
+    else:
+        assembled = base[:max_candidates]
 
     retrieved: list[RetrievedChunk] = []
-    for hit in fused:
-        row = rows.get(hit.chunk_id)
-        if row is None:
+    for hit in assembled:
+        hydrated_row = rows.get(hit.chunk_id)
+        if hydrated_row is None:
+            hydrated_row = neighbor_rows.get(hit.chunk_id)
+        if hydrated_row is None:
             continue
-        retrieved.append(
-            RetrievedChunk(
-                chunk_id=int(row.chunk_id),
-                document_id=int(row.document_id),
-                source_type=SourceType(row.source_type),
-                document_title=str(row.document_title),
-                document_source_url=str(row.document_source_url),
-                ordinal=int(row.ordinal),
-                text=str(row.text),
-                png_r2_key=None if row.png_r2_key is None else str(row.png_r2_key),
-                anchor=None if row.anchor is None else str(row.anchor),
-                parent_anchor=None if row.parent_anchor is None else str(row.parent_anchor),
-                source_url=str(row.source_url),
-                score=hit.score,
-                source=RetrievalSource.HYBRID,
-            )
-        )
+        retrieved.append(_row_to_retrieved(hydrated_row, hit.score))
     return retrieved
 
 
@@ -235,8 +490,16 @@ class RetrievalService:
     in a request-scoped :class:`AsyncSession`.
     """
 
-    def __init__(self, embedder: VoyageEmbedder) -> None:
+    def __init__(
+        self,
+        embedder: VoyageEmbedder,
+        *,
+        page_window: int = DEFAULT_PAGE_WINDOW,
+        max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    ) -> None:
         self._embedder = embedder
+        self._page_window = page_window
+        self._max_candidates = max_candidates
 
     async def search(
         self,
@@ -248,8 +511,14 @@ class RetrievalService:
             embedder=self._embedder,
             query_text=query.text,
             top_k=query.top_k,
+            page_window=self._page_window,
+            max_candidates=self._max_candidates,
         )
 
     @classmethod
     def from_settings(cls, settings: Settings) -> RetrievalService:
-        return cls(embedder=VoyageEmbedder(settings))
+        return cls(
+            embedder=VoyageEmbedder(settings),
+            page_window=settings.retrieval_page_window,
+            max_candidates=settings.retrieval_max_candidates,
+        )

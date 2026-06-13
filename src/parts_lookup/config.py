@@ -26,14 +26,27 @@ class Settings(BaseSettings):
     # --- App ---
     app_env: Literal["local", "staging", "production"] = "local"
     log_level: str = "INFO"
-    # Candidate depth handed to extraction. Raised 3 -> 5 (#29): with many
-    # near-duplicate year/model manuals carrying identical specs, the *named*
-    # doc routinely lands at fused rank 4-10 and was discarded before Claude
-    # saw it. 5 over-fetches so the title rerank + extraction can recover it;
-    # each extra candidate is one more PDF page image to Claude vision
-    # (5/3 = ~1.67x vision input on PDF-heavy queries — within the CLAUDE.md
-    # ~$10/mo budget at ~10 q/day).
+    # Document-selection breadth (#30): the fused-truncation that picks which
+    # docs/pages seed the candidate set BEFORE within-doc page expansion. Raised
+    # 3 -> 5 (#29): with many near-duplicate year/model manuals carrying
+    # identical specs, the *named* doc routinely lands at fused rank 4-10 and was
+    # discarded before Claude saw it. 5 over-fetches so the title rerank +
+    # extraction can recover it. NOTE: this is no longer the total page count
+    # sent to Claude — `retrieval_max_candidates` is the hard page budget after
+    # neighbor expansion. Each candidate is one PDF page image to Claude vision.
     retrieval_top_k: int = Field(default=5, ge=1, le=10)
+    # Within-document page-neighbor expansion (#30). The "right manual, wrong
+    # page" failure: the leading manual is retrieved but the specific value page
+    # lands just outside the candidate set. We expand ONLY the single top-RRF
+    # document, anchored on its highest-fused page, adding `±retrieval_page_window`
+    # neighbor pages (ordinal ± W) so the answer-bearing page reaches Claude.
+    retrieval_page_window: int = Field(default=1, ge=0, le=3)
+    # Hard page budget: the maximum candidates (pages) sent to Claude vision per
+    # query, AFTER neighbor expansion. Decouples "documents to consider"
+    # (`retrieval_top_k`) from "pages sent to Claude" so expansion cost stays
+    # bounded. Base fused-winner pages are never evicted; neighbors are appended
+    # closest-to-anchor-first and dropped farthest-first when over budget.
+    retrieval_max_candidates: int = Field(default=6, ge=1, le=10)
     # When true, VoyageEmbedder + ClaudeExtractor return deterministic
     # canned data instead of calling the real APIs. Local-smoke-test only.
     stub_external_apis: bool = False

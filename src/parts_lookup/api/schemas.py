@@ -26,8 +26,12 @@ class QueryRequest(BaseModel):
         ge=1,
         le=10,
         description=(
-            "Number of candidate pages to ask Claude about. Default 5 (#29): "
-            "each candidate is one more PDF page image sent to Claude vision."
+            "Document-selection breadth: how many top fused pages seed the "
+            "candidate set. Default 5 (#29). NOTE (#30): this is no longer the "
+            "total number of pages sent to Claude — the server expands the "
+            "single leading document with neighbor pages and caps the total at "
+            "a fixed page budget (retrieval_max_candidates). So the actual page "
+            "count Claude sees can exceed top_k up to that budget."
         ),
     )
 
